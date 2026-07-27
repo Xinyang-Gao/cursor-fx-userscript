@@ -2,7 +2,7 @@
 // @name         Cursor FX
 // @name:zh-CN   自定义鼠标光标特效
 // @namespace    https://github.com/Xinyang-Gao/cursor-fx-userscript
-// @version      2.3.0
+// @version      2.3.1
 // @description  Smooth custom cursor: delayed ring follow, hover fitting, text caret mode, click spring scale, scroll trail. GPU-composited, frame-rate independent, auto-pauses when idle. Settings panel via the Tampermonkey menu.
 // @description:zh-CN  隐藏系统指针，使用圆点 + 圆环自定义光标：延迟跟随、悬停贴合、文本竖条、点击弹性缩放、滚动拖尾。transform 合成层定位，帧率无关平滑，空闲自动暂停。点击篡改猴菜单中的「⚙ 光标设置」打开设置面板，实时调节、自动保存。
 // @author       Xinyang-Gao
@@ -23,98 +23,65 @@
 (function () {
     'use strict';
 
-    // ================= I18N 配置 =================
+    const SCRIPT_VERSION = '2.3.1';
+    const WEB_API_VERSION = '1.0';
+
+    // ==================== I18N ====================
     const LANGUAGES = {
         'zh-CN': {
-            name: '简体中文',
             dict: {
+                menu: { settings: '⚙ 光标设置' },
                 title: 'Cursor FX 设置',
-                versionPrefix: 'v',
+                version: 'v{v}',
                 reducedMotionMsg: '系统启用了「减少动态效果」，动画已自动弱化',
+                a11y: { close: '关闭', dialog: 'Cursor FX 设置面板' },
                 groups: {
-                    appearance: '外观',
-                    fit: '贴合',
-                    follow: '跟随',
-                    click: '点击',
-                    scroll: '滚动',
-                    text: '文本',
-                    other: '其他'
+                    appearance: '外观', fit: '贴合', follow: '跟随',
+                    click: '点击', scroll: '滚动', text: '文本', other: '其他'
                 },
                 labels: {
-                    DOT_SIZE: '圆点大小',
-                    RING_SIZE: '圆环大小',
-                    RING_BORDER: '圆环粗细',
-                    RING_ALPHA: '圆环透明度',
-                    FIT_PADDING: '贴合留白',
-                    MAX_FIT_SIZE: '最大贴合尺寸',
-                    FOLLOW_SPEED: '跟随速度',
-                    FIT_SPEED: '吸附速度',
-                    SHAPE_SPEED: '形变速度',
-                    CLICK_SCALE: '按下缩放',
-                    SPRING_K: '回弹刚度',
-                    SPRING_DAMP: '回弹阻尼',
-                    SCROLL_MAX: '拖尾幅度',
-                    SCROLL_DECAY: '拖尾回收',
-                    TEXT_BAR_W: '竖条宽度',
-                    TEXT_BAR_H: '竖条高度',
-                    TEXT_RING_SIZE: '文本环大小',
-                    TEXT_RING_ALPHA: '文本环透明度',
+                    DOT_SIZE: '圆点大小', RING_SIZE: '圆环大小', RING_BORDER: '圆环粗细',
+                    RING_ALPHA: '圆环透明度', FIT_PADDING: '贴合留白', MAX_FIT_SIZE: '最大贴合尺寸',
+                    FOLLOW_SPEED: '跟随速度', FIT_SPEED: '吸附速度', SHAPE_SPEED: '形变速度',
+                    CLICK_SCALE: '按下缩放', SPRING_K: '回弹刚度', SPRING_DAMP: '回弹阻尼',
+                    SCROLL_MAX: '拖尾幅度', SCROLL_DECAY: '拖尾回收', TEXT_BAR_W: '竖条宽度',
+                    TEXT_BAR_H: '竖条高度', TEXT_RING_SIZE: '文本环大小', TEXT_RING_ALPHA: '文本环透明度',
                     IDLE_PAUSE_MS: '空闲暂停'
                 },
                 buttons: {
-                    reset: '恢复默认',
-                    close: '完成',
-                    saved: '✓ 已保存',
-                    restored: '✓ 已恢复默认'
+                    reset: '恢复默认', close: '完成',
+                    saved: '✓ 已保存', restored: '✓ 已恢复默认'
                 },
                 settings: {
                     language: '界面语言',
-                    langOptionZh: '简体中文',
+                    langOptionZh: '简体中文',   // 始终显示语言自身名称
                     langOptionEn: 'English'
                 }
             }
         },
         'en': {
-            name: 'English',
             dict: {
+                menu: { settings: '⚙ Cursor FX Settings' },
                 title: 'Cursor FX Settings',
-                versionPrefix: 'v',
+                version: 'v{v}',
                 reducedMotionMsg: 'System "Reduce Motion" is enabled. Animations are minimized.',
+                a11y: { close: 'Close', dialog: 'Cursor FX settings panel' },
                 groups: {
-                    appearance: 'Appearance',
-                    fit: 'Fitting',
-                    follow: 'Following',
-                    click: 'Click',
-                    scroll: 'Scroll',
-                    text: 'Text',
-                    other: 'Other'
+                    appearance: 'Appearance', fit: 'Fitting', follow: 'Following',
+                    click: 'Click', scroll: 'Scroll', text: 'Text', other: 'Other'
                 },
                 labels: {
-                    DOT_SIZE: 'Dot Size',
-                    RING_SIZE: 'Ring Size',
-                    RING_BORDER: 'Ring Border',
-                    RING_ALPHA: 'Ring Opacity',
-                    FIT_PADDING: 'Fit Padding',
-                    MAX_FIT_SIZE: 'Max Fit Size',
-                    FOLLOW_SPEED: 'Follow Speed',
-                    FIT_SPEED: 'Fit Speed',
-                    SHAPE_SPEED: 'Shape Speed',
-                    CLICK_SCALE: 'Click Scale',
-                    SPRING_K: 'Spring Stiffness',
-                    SPRING_DAMP: 'Spring Damping',
-                    SCROLL_MAX: 'Scroll Trail Max',
-                    SCROLL_DECAY: 'Scroll Decay',
-                    TEXT_BAR_W: 'Bar Width',
-                    TEXT_BAR_H: 'Bar Height',
-                    TEXT_RING_SIZE: 'Text Ring Size',
-                    TEXT_RING_ALPHA: 'Text Ring Alpha',
+                    DOT_SIZE: 'Dot Size', RING_SIZE: 'Ring Size', RING_BORDER: 'Ring Border',
+                    RING_ALPHA: 'Ring Opacity', FIT_PADDING: 'Fit Padding', MAX_FIT_SIZE: 'Max Fit Size',
+                    FOLLOW_SPEED: 'Follow Speed', FIT_SPEED: 'Fit Speed', SHAPE_SPEED: 'Shape Speed',
+                    CLICK_SCALE: 'Click Scale', SPRING_K: 'Spring Stiffness', SPRING_DAMP: 'Spring Damping',
+                    SCROLL_MAX: 'Scroll Trail Max', SCROLL_DECAY: 'Scroll Decay', TEXT_BAR_W: 'Bar Width',
+                    TEXT_BAR_H: 'Bar Height', TEXT_RING_SIZE: 'Text Ring Size', TEXT_RING_ALPHA: 'Text Ring Alpha',
                     IDLE_PAUSE_MS: 'Idle Pause'
                 },
                 buttons: {
-                    reset: 'Reset Defaults',
-                    close: 'Done',
-                    saved: '✓ Saved',
-                    restored: '✓ Defaults Restored'
+                    reset: 'Reset Defaults', close: 'Done',
+                    saved: '✓ Saved', restored: '✓ Defaults Restored'
                 },
                 settings: {
                     language: 'Interface Language',
@@ -125,35 +92,48 @@
         }
     };
 
-    // 获取当前语言，优先读取存储，其次浏览器语言，最后默认英文
+    /** 获取初始语言：存储 → navigator.languages → navigator.language → 'en' */
     function getInitialLang() {
         try {
-            if (typeof GM_getValue === 'function') {
-                const v = GM_getValue('CursorFX.lang', null);
-                if (v && LANGUAGES[v]) return v;
-            } else {
-                const v = localStorage.getItem('CursorFX.lang');
-                if (v && LANGUAGES[v]) return v;
-            }
-        } catch (e) {}
+            const stored = typeof GM_getValue === 'function'
+                ? GM_getValue('CursorFX.lang', null)
+                : localStorage.getItem('CursorFX.lang');
+            if (stored && LANGUAGES[stored]) return stored;
+        } catch (_) { /* ignore */ }
 
-        // Fallback to browser language
-        const browserLang = navigator.language || 'en';
-        if (browserLang.startsWith('zh')) return 'zh-CN';
+        const candidates = navigator.languages || [navigator.language || 'en'];
+        for (const lang of candidates) {
+            if (LANGUAGES[lang]) return lang;
+            const base = lang.split('-')[0];
+            if (base === 'zh') return 'zh-CN';       // zh-TW / zh-HK → zh-CN
+            if (LANGUAGES[base]) return base;
+        }
         return 'en';
     }
 
     let CURRENT_LANG = getInitialLang();
 
-    // 翻译辅助函数
-    function t(key, ...args) {
+    /**
+     * 翻译函数，支持点分路径 + {placeholder} 替换
+     * t('version', { v: '2.3.1' }) → "v2.3.1"
+     */
+    function t(key, params = {}) {
         const dict = LANGUAGES[CURRENT_LANG].dict;
-        let val = key.split('.').reduce((o, i) => (o ? o[i] : null), dict);
-        if (val === undefined || val === null) return key; // Fallback
-        return val;
+        let val = key.split('.').reduce((o, k) => (o ? o[k] : null), dict);
+        if (val == null) return key;
+        return val.replace(/\{(\w+)\}/g, (m, p) =>
+            params[p] !== undefined ? params[p] : m
+        );
     }
 
-    // ================= 可调参数（默认） =================
+    function saveLang(lang) {
+        try {
+            if (typeof GM_setValue === 'function') GM_setValue('CursorFX.lang', lang);
+            else localStorage.setItem('CursorFX.lang', lang);
+        } catch (_) { /* ignore */ }
+    }
+
+    // ==================== 可调参数 ====================
     const DEFAULTS = {
         DOT_SIZE: 8,            // 圆点直径 (px)
         RING_SIZE: 40,          // 圆环默认直径 (px)
@@ -185,12 +165,10 @@
     const store = {
         read(k, fb) {
             try {
-                if (typeof GM_getValue === 'function') {
-                    const v = GM_getValue(k, null);
-                    return v == null ? fb : JSON.parse(v);
-                }
-                const v = localStorage.getItem('CursorFX.' + k);
-                return v == null ? fb : JSON.parse(v);
+                const raw = typeof GM_getValue === 'function'
+                    ? GM_getValue(k, null)
+                    : localStorage.getItem('CursorFX.' + k);
+                return raw == null ? fb : JSON.parse(raw);
             } catch { return fb; }
         },
         write(k, v) {
@@ -208,32 +186,31 @@
         },
     };
 
-    // ---------- 设置字段定义 ----------
+    // ---------- 字段定义 ----------
     const FIELDS = [
-        { g: 'appearance', key: 'DOT_SIZE', label: 'DOT_SIZE', min: 2, max: 24, step: 1, unit: 'px' },
-        { g: 'appearance', key: 'RING_SIZE', label: 'RING_SIZE', min: 16, max: 96, step: 2, unit: 'px' },
-        { g: 'appearance', key: 'RING_BORDER', label: 'RING_BORDER', min: 0.5, max: 6, step: 0.5, unit: 'px' },
-        { g: 'appearance', key: 'RING_ALPHA', label: 'RING_ALPHA', min: 0.1, max: 1, step: 0.05, unit: '' },
-        { g: 'fit', key: 'FIT_PADDING', label: 'FIT_PADDING', min: 0, max: 24, step: 1, unit: 'px' },
-        { g: 'fit', key: 'MAX_FIT_SIZE', label: 'MAX_FIT_SIZE', min: 80, max: 480, step: 10, unit: 'px' },
-        { g: 'follow', key: 'FOLLOW_SPEED', label: 'FOLLOW_SPEED', min: 2, max: 40, step: 1, unit: '' },
-        { g: 'follow', key: 'FIT_SPEED', label: 'FIT_SPEED', min: 4, max: 80, step: 1, unit: '' },
-        { g: 'follow', key: 'SHAPE_SPEED', label: 'SHAPE_SPEED', min: 4, max: 80, step: 1, unit: '' },
-        { g: 'click', key: 'CLICK_SCALE', label: 'CLICK_SCALE', min: 0.4, max: 1, step: 0.02, unit: '' },
-        { g: 'click', key: 'SPRING_K', label: 'SPRING_K', min: 100, max: 1200, step: 20, unit: '' },
-        { g: 'click', key: 'SPRING_DAMP', label: 'SPRING_DAMP', min: 5, max: 40, step: 1, unit: '' },
-        { g: 'scroll', key: 'SCROLL_MAX', label: 'SCROLL_MAX', min: 0, max: 80, step: 2, unit: 'px' },
-        { g: 'scroll', key: 'SCROLL_DECAY', label: 'SCROLL_DECAY', min: 1, max: 20, step: 0.5, unit: '' },
-        { g: 'text', key: 'TEXT_BAR_W', label: 'TEXT_BAR_W', min: 1, max: 6, step: 0.5, unit: 'px' },
-        { g: 'text', key: 'TEXT_BAR_H', label: 'TEXT_BAR_H', min: 12, max: 40, step: 1, unit: 'px' },
-        { g: 'text', key: 'TEXT_RING_SIZE', label: 'TEXT_RING_SIZE', min: 12, max: 64, step: 2, unit: 'px' },
-        { g: 'text', key: 'TEXT_RING_ALPHA', label: 'TEXT_RING_ALPHA', min: 0.1, max: 1, step: 0.05, unit: '' },
-        { g: 'other', key: 'IDLE_PAUSE_MS', label: 'IDLE_PAUSE_MS', min: 500, max: 10000, step: 250, unit: 'ms' },
+        { g: 'appearance', key: 'DOT_SIZE',       label: 'DOT_SIZE',       min: 2,   max: 24,   step: 1,    unit: 'px' },
+        { g: 'appearance', key: 'RING_SIZE',      label: 'RING_SIZE',      min: 16,  max: 96,   step: 2,    unit: 'px' },
+        { g: 'appearance', key: 'RING_BORDER',    label: 'RING_BORDER',    min: 0.5, max: 6,    step: 0.5,  unit: 'px' },
+        { g: 'appearance', key: 'RING_ALPHA',     label: 'RING_ALPHA',     min: 0.1, max: 1,    step: 0.05, unit: '' },
+        { g: 'fit',        key: 'FIT_PADDING',    label: 'FIT_PADDING',    min: 0,   max: 24,   step: 1,    unit: 'px' },
+        { g: 'fit',        key: 'MAX_FIT_SIZE',   label: 'MAX_FIT_SIZE',   min: 80,  max: 480,  step: 10,   unit: 'px' },
+        { g: 'follow',     key: 'FOLLOW_SPEED',   label: 'FOLLOW_SPEED',   min: 2,   max: 40,   step: 1,    unit: '' },
+        { g: 'follow',     key: 'FIT_SPEED',      label: 'FIT_SPEED',      min: 4,   max: 80,   step: 1,    unit: '' },
+        { g: 'follow',     key: 'SHAPE_SPEED',    label: 'SHAPE_SPEED',    min: 4,   max: 80,   step: 1,    unit: '' },
+        { g: 'click',      key: 'CLICK_SCALE',    label: 'CLICK_SCALE',    min: 0.4, max: 1,    step: 0.02, unit: '' },
+        { g: 'click',      key: 'SPRING_K',       label: 'SPRING_K',       min: 100, max: 1200, step: 20,   unit: '' },
+        { g: 'click',      key: 'SPRING_DAMP',    label: 'SPRING_DAMP',    min: 5,   max: 40,   step: 1,    unit: '' },
+        { g: 'scroll',     key: 'SCROLL_MAX',     label: 'SCROLL_MAX',     min: 0,   max: 80,   step: 2,    unit: 'px' },
+        { g: 'scroll',     key: 'SCROLL_DECAY',   label: 'SCROLL_DECAY',   min: 1,   max: 20,   step: 0.5,  unit: '' },
+        { g: 'text',       key: 'TEXT_BAR_W',     label: 'TEXT_BAR_W',     min: 1,   max: 6,    step: 0.5,  unit: 'px' },
+        { g: 'text',       key: 'TEXT_BAR_H',     label: 'TEXT_BAR_H',     min: 12,  max: 40,   step: 1,    unit: 'px' },
+        { g: 'text',       key: 'TEXT_RING_SIZE', label: 'TEXT_RING_SIZE', min: 12,  max: 64,   step: 2,    unit: 'px' },
+        { g: 'text',       key: 'TEXT_RING_ALPHA',label: 'TEXT_RING_ALPHA',min: 0.1, max: 1,    step: 0.05, unit: '' },
+        { g: 'other',      key: 'IDLE_PAUSE_MS',  label: 'IDLE_PAUSE_MS',  min: 500, max: 10000,step: 250,  unit: 'ms' },
     ];
     const FMAP = {};
     FIELDS.forEach(f => FMAP[f.key] = f);
 
-    // 读取覆盖项
     const overrides = {};
     {
         const raw = store.read('overrides', {});
@@ -243,7 +220,6 @@
         }
     }
 
-    // 减少动态效果
     const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
     const RM_PATCH = RM ? {
         FOLLOW_SPEED: 1e4, FIT_SPEED: 1e4, SHAPE_SPEED: 1e4,
@@ -296,7 +272,7 @@
     renderCSS();
     (document.head || document.documentElement).appendChild(style);
 
-    // ---------- 创建元素 ----------
+    // ---------- 光标元素 ----------
     function spawn() {
         const dot = document.createElement('div');
         const ring = document.createElement('div');
@@ -311,11 +287,8 @@
         const SEL_INTERACTIVE = 'a, button, [role="button"], [tabindex]:not([tabindex="-1"]), [onclick]';
         const SEL_TEXT = [
             'input:not([type="button"]):not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="reset"]):not([type="image"]):not([type="range"]):not([type="color"]):not([type="file"])',
-            'textarea',
-            '[contenteditable="true"]',
-            '[contenteditable=""]',
-            '[contenteditable="plaintext-only"]',
-            '[role="textbox"]',
+            'textarea', '[contenteditable="true"]', '[contenteditable=""]',
+            '[contenteditable="plaintext-only"]', '[role="textbox"]',
         ].join(',');
 
         // ----- 状态 -----
@@ -355,7 +328,6 @@
             dot.classList.remove('cc-live');
             ring.classList.remove('cc-live');
         }
-
         function wake() {
             lastInput = performance.now();
             show();
@@ -382,15 +354,15 @@
         }, { passive: true });
 
         document.addEventListener('mouseover', (e) => {
-            const t = e.target;
-            if (!t || t.nodeType !== 1) return;
-            const txt = t.closest(SEL_TEXT) || null;
+            const tgt = e.target;
+            if (!tgt || tgt.nodeType !== 1) return;
+            const txt = tgt.closest(SEL_TEXT) || null;
             if (txt !== textEl) {
                 textEl = txt;
                 setDotShape(!!txt);
                 setRingAlpha(!!txt);
             }
-            const inter = t.closest(SEL_INTERACTIVE);
+            const inter = tgt.closest(SEL_INTERACTIVE);
             if (inter !== hoverEl) {
                 let next = null, rad = 0;
                 if (inter && !inter.matches(SEL_TEXT)) {
@@ -402,10 +374,10 @@
         });
 
         document.addEventListener('focusin', (e) => {
-            const t = e.target;
-            if (!t || t.nodeType !== 1 || t.matches(SEL_TEXT) || !t.matches(SEL_INTERACTIVE)) return;
-            const m = measure(t);
-            if (m !== null) { focusEl = t; focusRad = m; wake(); }
+            const tgt = e.target;
+            if (!tgt || tgt.nodeType !== 1 || tgt.matches(SEL_TEXT) || !tgt.matches(SEL_INTERACTIVE)) return;
+            const m = measure(tgt);
+            if (m !== null) { focusEl = tgt; focusRad = m; wake(); }
         });
         document.addEventListener('focusout', (e) => {
             if (focusEl === e.target) { focusEl = null; wake(); }
@@ -448,21 +420,30 @@
             }
         };
 
-        const WEB_API_VERSION = '1.0';
+        // ---------- Web API ----------
         function handleWebRequest(e) {
             const { action, requestId, payload } = e.detail || {};
             if (!action) return;
             let result;
             try {
                 switch (action) {
-                    case 'ping': result = { status: 'alive', version: WEB_API_VERSION }; break;
-                    case 'getStatus': result = { visible: shown, pressed, hoverEl: !!hoverEl, focusEl: !!focusEl, textMode: dotIsBar, ringDim, scrollOffset: { x: sX, y: sY }, dotScale: dotS, ringScale: ringS }; break;
-                    case 'getSettings':
+                    case 'ping':
+                        result = { status: 'alive', version: WEB_API_VERSION }; break;
+                    case 'getStatus':
+                        result = {
+                            visible: shown, pressed,
+                            hoverEl: !!hoverEl, focusEl: !!focusEl,
+                            textMode: dotIsBar, ringDim,
+                            scrollOffset: { x: sX, y: sY },
+                            dotScale: dotS, ringScale: ringS
+                        }; break;
+                    case 'getSettings': {
                         const settings = {};
                         for (const f of FIELDS) settings[f.key] = CFG[f.key];
                         result = { settings }; break;
-                    case 'setSetting':
-                        const { key, value } = payload;
+                    }
+                    case 'setSetting': {
+                        const { key, value } = payload || {};
                         if (key && key in FMAP) {
                             const f = FMAP[key];
                             const clamped = clamp(value, f.min, f.max);
@@ -470,8 +451,11 @@
                             commit();
                             store.write('overrides', overrides);
                             result = { success: true, key, value: clamped };
-                        } else { result = { success: false, error: 'Invalid key' }; }
+                        } else {
+                            result = { success: false, error: 'Invalid key' };
+                        }
                         break;
+                    }
                     case 'resetSettings':
                         for (const k in overrides) delete overrides[k];
                         store.erase('overrides');
@@ -480,19 +464,26 @@
                     case 'toggleVisible':
                         if (shown) hide(); else wake();
                         result = { visible: shown }; break;
-                    case 'getVersion': result = { version: WEB_API_VERSION, scriptVersion: '2.3.0-i18n' }; break;
-                    default: result = { error: 'Unknown action: ' + action };
+                    case 'getVersion':
+                        result = { version: WEB_API_VERSION, scriptVersion: SCRIPT_VERSION }; break;
+                    default:
+                        result = { error: 'Unknown action: ' + action };
                 }
             } catch (err) { result = { error: err.message }; }
             if (requestId) {
-                window.dispatchEvent(new CustomEvent('CURSORFX_RESPONSE', { detail: { requestId, result } }));
+                window.dispatchEvent(new CustomEvent('CURSORFX_RESPONSE', {
+                    detail: { requestId, result }
+                }));
             }
         }
         window.addEventListener('CURSORFX_REQUEST', handleWebRequest);
         setTimeout(() => {
-            window.dispatchEvent(new CustomEvent('CURSORFX_READY', { detail: { version: WEB_API_VERSION, scriptVersion: '2.3.0-i18n' } }));
+            window.dispatchEvent(new CustomEvent('CURSORFX_READY', {
+                detail: { version: WEB_API_VERSION, scriptVersion: SCRIPT_VERSION }
+            }));
         }, 0);
 
+        // ---------- 动画循环 ----------
         function tick(t) {
             rafId = 0;
             const dt = clamp((t - lastT) / 1000, 0, 0.05) || 0.016;
@@ -566,26 +557,23 @@
         }
     }
 
-    // ================= 设置面板 =================
+    // 设置面板
     let panelHost = null, panelOpen = false;
 
     const decimals = f => String(f.step).includes('.') ? String(f.step).split('.')[1].length : 0;
     const fmt = (v, f) => (+v).toFixed(decimals(f)) + (f.unit ? ' ' + f.unit : '');
     const curVal = f => (f.key in overrides ? overrides[f.key] : DEFAULTS[f.key]);
 
-    // 生成设置行 HTML
     function rowsHTML() {
         let html = '', lastG = '';
         for (const f of FIELDS) {
             if (f.g !== lastG) {
                 if (lastG) html += '</section>';
-                // 使用 t() 获取分组名称
                 html += '<section><h3>' + t('groups.' + f.g) + '</h3>';
                 lastG = f.g;
             }
             const v = curVal(f);
             const p = ((v - f.min) / (f.max - f.min) * 100).toFixed(1);
-            // 使用 t() 获取标签名称
             html +=
                 '<label class="row">' +
                 '<span class="lab">' + t('labels.' + f.label) + '</span>' +
@@ -597,8 +585,16 @@
         return html + '</section>';
     }
 
-    // 构建面板
+    /**
+     * 构建面板（每次调用都会创建全新节点）
+     * 修复：开头防御性移除旧节点，杜绝叠加
+     */
     function buildPanel() {
+        if (panelHost) {
+            panelHost.remove();
+            panelHost = null;
+        }
+
         panelHost = document.createElement('div');
         const hs = panelHost.style;
         hs.setProperty('position', 'fixed', 'important');
@@ -608,17 +604,8 @@
         hs.setProperty('z-index', '2147483646', 'important');
         hs.setProperty('color-scheme', 'dark', 'important');
 
-        const sh = panelHost.attachShadow({ mode: 'closed' });
-
-        // 动态生成 HTML 内容，使用 t() 进行翻译
-        const titleText = t('title');
-        const verText = t('versionPrefix') + '2.3';
-        const rmMsg = t('reducedMotionMsg');
-        const btnReset = t('buttons.reset');
-        const btnClose = t('buttons.close');
-        const lblLang = t('settings.language');
-        const optZh = t('settings.langOptionZh');
-        const optEn = t('settings.langOptionEn');
+        // 修复：使用 mode:'open'，确保 openPanel 可通过 panelHost.shadowRoot 访问
+        const sh = panelHost.attachShadow({ mode: 'open' });
 
         sh.innerHTML =
             '<style>' +
@@ -661,15 +648,12 @@
             'input[type=range]::-moz-range-thumb{width:13px;height:13px;border:none;border-radius:50%;' +
             'background:#fff;box-shadow:0 1px 5px rgba(0,0,0,.55)}' +
             'input[type=range]:focus-visible{outline:2px solid rgba(255,255,255,.45);outline-offset:2px;border-radius:6px}' +
-
-            /* 语言选择器样式 */
             '.lang-row{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;' +
             'border-top:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.02)}' +
             '.lang-label{font-size:12px;color:#b7bac3}' +
             'select.lang-select{background:rgba(0,0,0,.3);color:#e8e9ec;border:1px solid rgba(255,255,255,.15);' +
             'border-radius:6px;padding:4px 8px;font-size:12px;outline:none;cursor:none}' +
             'select.lang-select:hover{border-color:rgba(255,255,255,.3)}' +
-
             'footer{display:flex;align-items:center;gap:8px;padding:10px 14px 13px;' +
             'border-top:1px solid rgba(255,255,255,.07)}' +
             'button{font:inherit}' +
@@ -683,30 +667,31 @@
             '.saved{flex:1;text-align:center;font-size:11px;color:#8fd6a8;opacity:0;transition:opacity .35s}' +
             '.saved.on{opacity:1}' +
             '</style>' +
-            '<div class="panel" role="dialog" aria-label="Cursor FX Settings">' +
+            '<div class="panel" role="dialog" aria-label="' + t('a11y.dialog') + '">' +
             '<header>' +
-            '<span class="ttl">' + titleText + '<span class="ver">' + verText + '</span></span>' +
-            '<button class="x" data-act="close" aria-label="Close">✕</button>' +
+            '<span class="ttl">' + t('title') +
+            '<span class="ver">' + t('version', { v: SCRIPT_VERSION }) + '</span></span>' +
+            '<button class="x" data-act="close" aria-label="' + t('a11y.close') + '">✕</button>' +
             '</header>' +
-            (RM ? '<p class="rm">' + rmMsg + '</p>' : '') +
+            (RM ? '<p class="rm">' + t('reducedMotionMsg') + '</p>' : '') +
             '<div class="body">' + rowsHTML() + '</div>' +
-
-            // 语言切换区域
             '<div class="lang-row">' +
-            '<span class="lang-label">' + lblLang + '</span>' +
+            '<span class="lang-label">' + t('settings.language') + '</span>' +
             '<select class="lang-select" id="lang-selector">' +
-            '<option value="zh-CN"' + (CURRENT_LANG === 'zh-CN' ? ' selected' : '') + '>' + optZh + '</option>' +
-            '<option value="en"' + (CURRENT_LANG === 'en' ? ' selected' : '') + '>' + optEn + '</option>' +
+            '<option value="zh-CN"' + (CURRENT_LANG === 'zh-CN' ? ' selected' : '') + '>' +
+            t('settings.langOptionZh') + '</option>' +
+            '<option value="en"' + (CURRENT_LANG === 'en' ? ' selected' : '') + '>' +
+            t('settings.langOptionEn') + '</option>' +
             '</select>' +
             '</div>' +
-
             '<footer>' +
-            '<button class="ghost" data-act="reset">' + btnReset + '</button>' +
+            '<button class="ghost" data-act="reset">' + t('buttons.reset') + '</button>' +
             '<span class="saved">' + t('buttons.saved') + '</span>' +
-            '<button class="prime" data-act="close">' + btnClose + '</button>' +
+            '<button class="prime" data-act="close">' + t('buttons.close') + '</button>' +
             '</footer>' +
             '</div>';
 
+        // ---------- 面板内事件 ----------
         const body = sh.querySelector('.body');
         const saved = sh.querySelector('.saved');
         const langSelect = sh.querySelector('#lang-selector');
@@ -720,10 +705,12 @@
         }
         function scheduleSave() {
             clearTimeout(saveT);
-            saveT = setTimeout(() => { store.write('overrides', overrides); flash('buttons.saved'); }, 350);
+            saveT = setTimeout(() => {
+                store.write('overrides', overrides);
+                flash('buttons.saved');
+            }, 350);
         }
 
-        // 滑动条事件
         body.addEventListener('input', (e) => {
             const k = e.target.dataset && e.target.dataset.k;
             if (!k) return;
@@ -731,42 +718,37 @@
             const v = clamp(parseFloat(e.target.value), f.min, f.max);
             overrides[k] = v;
             e.target.closest('.row').querySelector('.val').textContent = fmt(v, f);
-            e.target.style.setProperty('--p', ((v - f.min) / (f.max - f.min) * 100).toFixed(1) + '%');
+            e.target.style.setProperty('--p',
+                ((v - f.min) / (f.max - f.min) * 100).toFixed(1) + '%');
             commit();
             scheduleSave();
         });
 
-        // 语言切换事件
+        // 语言切换：关闭旧面板 → 用新语言重建 → 打开
         langSelect.addEventListener('change', (e) => {
             const newLang = e.target.value;
-            if (LANGUAGES[newLang]) {
+            if (LANGUAGES[newLang] && newLang !== CURRENT_LANG) {
                 CURRENT_LANG = newLang;
-                // 保存语言设置
-                try {
-                    if (typeof GM_setValue === 'function') GM_setValue('CursorFX.lang', newLang);
-                    else localStorage.setItem('CursorFX.lang', newLang);
-                } catch(err) {}
-
-                // 重新构建面板以应用新语言
-                // 注意：由于 Shadow DOM 封闭性，最简单的方法是移除旧节点并重建
-                closePanel();
-                buildPanel();
-                openPanel();
+                saveLang(newLang);
+                closePanel();   // 彻底移除旧节点
+                openPanel();    // 用新语言重建并显示
             }
         });
 
         sh.querySelector('.panel').addEventListener('click', (e) => {
             const b = e.target.closest('[data-act]');
             if (!b) return;
-            if (b.dataset.act === 'close') closePanel();
-            else if (b.dataset.act === 'reset') {
+            if (b.dataset.act === 'close') {
+                closePanel();
+            } else if (b.dataset.act === 'reset') {
                 for (const k in overrides) delete overrides[k];
                 store.erase('overrides');
                 body.querySelectorAll('input[type=range]').forEach(inp => {
                     const f = FMAP[inp.dataset.k];
                     const v = DEFAULTS[f.key];
                     inp.value = v;
-                    inp.style.setProperty('--p', ((v - f.min) / (f.max - f.min) * 100).toFixed(1) + '%');
+                    inp.style.setProperty('--p',
+                        ((v - f.min) / (f.max - f.min) * 100).toFixed(1) + '%');
                     inp.closest('.row').querySelector('.val').textContent = fmt(v, f);
                 });
                 commit();
@@ -777,20 +759,31 @@
         document.body.appendChild(panelHost);
     }
 
+    /**
+     * 打开面板（不存在则构建）
+     * 修复：shadowRoot 现在可访问（mode:'open'）
+     */
     function openPanel() {
         if (!panelHost) buildPanel();
         panelOpen = true;
         panelHost.style.display = 'block';
         const p = panelHost.shadowRoot.querySelector('.panel');
         p.classList.remove('pop');
-        void p.offsetWidth;
+        void p.offsetWidth;          // 强制回流以重启动画
         p.classList.add('pop');
     }
+
+    /**
+     * 关闭面板：彻底移除节点，杜绝叠加
+     */
     function closePanel() {
-        if (!panelOpen) return;
         panelOpen = false;
-        panelHost.style.display = 'none';
+        if (panelHost) {
+            panelHost.remove();
+            panelHost = null;
+        }
     }
+
     function togglePanel() {
         if (!document.body) {
             addEventListener('DOMContentLoaded', () => togglePanel(), { once: true });
@@ -804,7 +797,8 @@
         if (panelOpen && panelHost && !panelHost.contains(e.target)) closePanel();
     }, true);
 
+    // ---------- 菜单命令 ----------
     if (typeof GM_registerMenuCommand === 'function') {
-        GM_registerMenuCommand('⚙ Cursor FX Settings', togglePanel);
+        GM_registerMenuCommand(t('menu.settings'), togglePanel);
     }
 })();
