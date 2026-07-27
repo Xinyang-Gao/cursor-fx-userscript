@@ -2,7 +2,7 @@
 // @name         Cursor FX
 // @name:zh-CN   自定义鼠标光标特效
 // @namespace    https://github.com/Xinyang-Gao/cursor-fx-userscript
-// @version      2.1.0
+// @version      2.2.0
 // @description  Smooth custom cursor: delayed ring follow, hover fitting, text caret mode, click spring scale, scroll trail. GPU-composited, frame-rate independent, auto-pauses when idle. Settings panel via the Tampermonkey menu.
 // @description:zh-CN  隐藏系统指针，使用圆点 + 圆环自定义光标：延迟跟随、悬停贴合、文本竖条、点击弹性缩放、滚动拖尾。transform 合成层定位，帧率无关平滑，空闲自动暂停。点击篡改猴菜单中的「⚙ 光标设置」打开设置面板，实时调节、自动保存。
 // @author       Xinyang-Gao
@@ -81,25 +81,25 @@
 
     // ---------- 设置 ----------
     const FIELDS = [
-        { g: '外观', key: 'DOT_SIZE',        label: '圆点大小',   min: 2,    max: 24,    step: 1,    unit: 'px' },
-        { g: '外观', key: 'RING_SIZE',       label: '圆环大小',   min: 16,   max: 96,    step: 2,    unit: 'px' },
-        { g: '外观', key: 'RING_BORDER',     label: '圆环粗细',   min: 0.5,  max: 6,     step: 0.5,  unit: 'px' },
-        { g: '外观', key: 'RING_ALPHA',      label: '圆环透明度', min: 0.1,  max: 1,     step: 0.05, unit: ''   },
-        { g: '贴合', key: 'FIT_PADDING',     label: '贴合留白',   min: 0,    max: 24,    step: 1,    unit: 'px' },
-        { g: '贴合', key: 'MAX_FIT_SIZE',    label: '最大贴合尺寸', min: 80, max: 480,   step: 10,   unit: 'px' },
-        { g: '跟随', key: 'FOLLOW_SPEED',    label: '跟随速度',   min: 2,    max: 40,    step: 1,    unit: ''   },
-        { g: '跟随', key: 'FIT_SPEED',       label: '吸附速度',   min: 4,    max: 80,    step: 1,    unit: ''   },
-        { g: '跟随', key: 'SHAPE_SPEED',     label: '形变速度',   min: 4,    max: 80,    step: 1,    unit: ''   },
-        { g: '点击', key: 'CLICK_SCALE',     label: '按下缩放',   min: 0.4,  max: 1,     step: 0.02, unit: ''   },
-        { g: '点击', key: 'SPRING_K',        label: '回弹刚度',   min: 100,  max: 1200,  step: 20,   unit: ''   },
-        { g: '点击', key: 'SPRING_DAMP',     label: '回弹阻尼',   min: 5,    max: 40,    step: 1,    unit: ''   },
-        { g: '滚动', key: 'SCROLL_MAX',      label: '拖尾幅度',   min: 0,    max: 80,    step: 2,    unit: 'px' },
-        { g: '滚动', key: 'SCROLL_DECAY',    label: '拖尾回收',   min: 1,    max: 20,    step: 0.5,  unit: ''   },
-        { g: '文本', key: 'TEXT_BAR_W',      label: '竖条宽度',   min: 1,    max: 6,     step: 0.5,  unit: 'px' },
-        { g: '文本', key: 'TEXT_BAR_H',      label: '竖条高度',   min: 12,   max: 40,    step: 1,    unit: 'px' },
-        { g: '文本', key: 'TEXT_RING_SIZE',  label: '文本环大小', min: 12,   max: 64,    step: 2,    unit: 'px' },
-        { g: '文本', key: 'TEXT_RING_ALPHA', label: '文本环透明度', min: 0.1, max: 1,    step: 0.05, unit: ''   },
-        { g: '其他', key: 'IDLE_PAUSE_MS',   label: '空闲暂停',   min: 500,  max: 10000, step: 250,  unit: 'ms' },
+        { g: '外观', key: 'DOT_SIZE', label: '圆点大小', min: 2, max: 24, step: 1, unit: 'px' },
+        { g: '外观', key: 'RING_SIZE', label: '圆环大小', min: 16, max: 96, step: 2, unit: 'px' },
+        { g: '外观', key: 'RING_BORDER', label: '圆环粗细', min: 0.5, max: 6, step: 0.5, unit: 'px' },
+        { g: '外观', key: 'RING_ALPHA', label: '圆环透明度', min: 0.1, max: 1, step: 0.05, unit: '' },
+        { g: '贴合', key: 'FIT_PADDING', label: '贴合留白', min: 0, max: 24, step: 1, unit: 'px' },
+        { g: '贴合', key: 'MAX_FIT_SIZE', label: '最大贴合尺寸', min: 80, max: 480, step: 10, unit: 'px' },
+        { g: '跟随', key: 'FOLLOW_SPEED', label: '跟随速度', min: 2, max: 40, step: 1, unit: '' },
+        { g: '跟随', key: 'FIT_SPEED', label: '吸附速度', min: 4, max: 80, step: 1, unit: '' },
+        { g: '跟随', key: 'SHAPE_SPEED', label: '形变速度', min: 4, max: 80, step: 1, unit: '' },
+        { g: '点击', key: 'CLICK_SCALE', label: '按下缩放', min: 0.4, max: 1, step: 0.02, unit: '' },
+        { g: '点击', key: 'SPRING_K', label: '回弹刚度', min: 100, max: 1200, step: 20, unit: '' },
+        { g: '点击', key: 'SPRING_DAMP', label: '回弹阻尼', min: 5, max: 40, step: 1, unit: '' },
+        { g: '滚动', key: 'SCROLL_MAX', label: '拖尾幅度', min: 0, max: 80, step: 2, unit: 'px' },
+        { g: '滚动', key: 'SCROLL_DECAY', label: '拖尾回收', min: 1, max: 20, step: 0.5, unit: '' },
+        { g: '文本', key: 'TEXT_BAR_W', label: '竖条宽度', min: 1, max: 6, step: 0.5, unit: 'px' },
+        { g: '文本', key: 'TEXT_BAR_H', label: '竖条高度', min: 12, max: 40, step: 1, unit: 'px' },
+        { g: '文本', key: 'TEXT_RING_SIZE', label: '文本环大小', min: 12, max: 64, step: 2, unit: 'px' },
+        { g: '文本', key: 'TEXT_RING_ALPHA', label: '文本环透明度', min: 0.1, max: 1, step: 0.05, unit: '' },
+        { g: '其他', key: 'IDLE_PAUSE_MS', label: '空闲暂停', min: 500, max: 10000, step: 250, unit: 'ms' },
     ];
     const FMAP = {};
     FIELDS.forEach(f => FMAP[f.key] = f);
@@ -336,6 +336,104 @@
             }
         };
 
+        // ========== 暴露网页接口 ==========
+        const WEB_API_VERSION = '1.0';
+
+        // 处理来自网页的请求
+        function handleWebRequest(e) {
+            const { action, requestId, payload } = e.detail || {};
+            if (!action) return;
+
+            let result;
+            try {
+                switch (action) {
+                    case 'ping':
+                        result = { status: 'alive', version: WEB_API_VERSION };
+                        break;
+
+                    case 'getStatus':
+                        result = {
+                            visible: shown,
+                            pressed,
+                            hoverEl: hoverEl ? true : false,
+                            focusEl: focusEl ? true : false,
+                            textMode: dotIsBar,
+                            ringDim,
+                            scrollOffset: { x: sX, y: sY },
+                            dotScale: dotS,
+                            ringScale: ringS,
+                        };
+                        break;
+
+                    case 'getSettings':
+                        // 返回当前所有设置（含用户覆盖值）
+                        const settings = {};
+                        for (const f of FIELDS) {
+                            settings[f.key] = CFG[f.key];
+                        }
+                        result = { settings };
+                        break;
+
+                    case 'setSetting':
+                        // 设置单个参数（需传入 key 和 value）
+                        const { key, value } = payload;
+                        if (key && key in FMAP) {
+                            const f = FMAP[key];
+                            const clamped = clamp(value, f.min, f.max);
+                            overrides[key] = clamped;
+                            commit();  // 应用并刷新
+                            // 自动保存（复用面板的保存逻辑）
+                            store.write('overrides', overrides);
+                            result = { success: true, key, value: clamped };
+                        } else {
+                            result = { success: false, error: 'Invalid key' };
+                        }
+                        break;
+
+                    case 'resetSettings':
+                        // 恢复所有设置为默认值
+                        for (const k in overrides) delete overrides[k];
+                        store.erase('overrides');
+                        commit();
+                        result = { success: true };
+                        break;
+
+                    case 'toggleVisible':
+                        // 切换显示/隐藏
+                        if (shown) hide(); else wake();
+                        result = { visible: shown };
+                        break;
+
+                    case 'getVersion':
+                        result = { version: WEB_API_VERSION, scriptVersion: '2.1.0' };
+                        break;
+
+                    default:
+                        result = { error: 'Unknown action: ' + action };
+                }
+            } catch (err) {
+                result = { error: err.message };
+            }
+
+            // 回复给网页
+            if (requestId) {
+                window.dispatchEvent(new CustomEvent('CURSORFX_RESPONSE', {
+                    detail: { requestId, result }
+                }));
+            }
+        }
+
+        // 监听网页请求
+        window.addEventListener('CURSORFX_REQUEST', handleWebRequest);
+
+        // 当脚本完全初始化后，派发“就绪”事件（通知网页脚本已加载）
+        // 使用 setTimeout 0 确保主循环已启动（或者直接派发）
+        setTimeout(() => {
+            window.dispatchEvent(new CustomEvent('CURSORFX_READY', {
+                detail: { version: WEB_API_VERSION, scriptVersion: '2.1.0' }
+            }));
+        }, 0);
+
         // ----- 主循环：所有 DOM 写入集中在此 -----
         function tick(t) {
             rafId = 0;
@@ -435,10 +533,10 @@
             const p = ((v - f.min) / (f.max - f.min) * 100).toFixed(1);
             html +=
                 '<label class="row">' +
-                    '<span class="lab">' + f.label + '</span>' +
-                    '<input type="range" data-k="' + f.key + '" min="' + f.min + '" max="' + f.max +
-                        '" step="' + f.step + '" value="' + v + '" style="--p:' + p + '%">' +
-                    '<span class="val">' + fmt(v, f) + '</span>' +
+                '<span class="lab">' + f.label + '</span>' +
+                '<input type="range" data-k="' + f.key + '" min="' + f.min + '" max="' + f.max +
+                '" step="' + f.step + '" value="' + v + '" style="--p:' + p + '%">' +
+                '<span class="val">' + fmt(v, f) + '</span>' +
                 '</label>';
         }
         return html + '</section>';
@@ -457,70 +555,70 @@
         const sh = panelHost.attachShadow({ mode: 'closed' });
         sh.innerHTML =
             '<style>' +
-                '*{box-sizing:border-box;margin:0;padding:0}' +
-                '.panel{width:340px;max-height:min(620px,88vh);display:flex;flex-direction:column;' +
-                    'background:rgba(18,19,23,.97);border:1px solid rgba(255,255,255,.1);border-radius:12px;' +
-                    'box-shadow:0 24px 60px rgba(0,0,0,.55),0 2px 12px rgba(0,0,0,.4);' +
-                    'font:13px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;' +
-                    'color:#e8e9ec;overflow:hidden;user-select:none}' +
-                '.panel.pop{animation:pop .18s cubic-bezier(.2,.9,.3,1.2)}' +
-                '@keyframes pop{from{opacity:0;transform:scale(.95) translateX(8px)}}' +
-                'header{display:flex;align-items:center;justify-content:space-between;padding:12px 12px 10px 16px;' +
-                    'border-bottom:1px solid rgba(255,255,255,.07)}' +
-                '.ttl{font:700 13px/1 ui-monospace,"SF Mono","Cascadia Code",Menlo,Consolas,monospace;letter-spacing:.06em}' +
-                '.ver{font:600 10px/1 ui-monospace,Menlo,Consolas,monospace;color:#8b8e98;' +
-                    'background:rgba(255,255,255,.07);padding:3px 6px;border-radius:4px;margin-left:8px;vertical-align:1px}' +
-                '.x{width:26px;height:26px;border:none;border-radius:7px;background:transparent;color:#9a9da6;' +
-                    'font-size:13px;line-height:1;cursor:none;transition:background .15s,color .15s}' +
-                '.x:hover{background:rgba(255,255,255,.09);color:#fff}' +
-                '.rm{margin:10px 14px 0;padding:7px 10px;font-size:11px;color:#e8c98a;' +
-                    'background:rgba(232,201,138,.08);border:1px solid rgba(232,201,138,.18);border-radius:7px}' +
-                '.body{overflow-y:auto;padding:2px 16px 10px;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.18) transparent}' +
-                '.body::-webkit-scrollbar{width:8px}' +
-                '.body::-webkit-scrollbar-thumb{background:rgba(255,255,255,.14);border-radius:4px}' +
-                'section h3{font-size:10px;font-weight:600;letter-spacing:.24em;color:#787b85;margin:14px 2px 4px}' +
-                '.row{display:grid;grid-template-columns:96px 1fr 62px;gap:10px;align-items:center;padding:3px 0}' +
-                '.lab{font-size:12px;color:#b7bac3;white-space:nowrap}' +
-                '.val{font:500 11px/1 ui-monospace,"SF Mono",Menlo,Consolas,monospace;color:#dfe1e6;' +
-                    'text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}' +
-                'input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:26px;' +
-                    'background:transparent;cursor:none;margin:0}' +
-                'input[type=range]::-webkit-slider-runnable-track{height:3px;border-radius:2px;' +
-                    'background:linear-gradient(90deg,#fff var(--p,50%),rgba(255,255,255,.16) var(--p,50%))}' +
-                'input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;margin-top:-5px;' +
-                    'border-radius:50%;background:#fff;box-shadow:0 1px 5px rgba(0,0,0,.55);transition:transform .15s ease}' +
-                'input[type=range]:hover::-webkit-slider-thumb{transform:scale(1.25)}' +
-                'input[type=range]:active::-webkit-slider-thumb{transform:scale(.9)}' +
-                'input[type=range]::-moz-range-track{height:3px;border-radius:2px;background:rgba(255,255,255,.16)}' +
-                'input[type=range]::-moz-range-progress{height:3px;border-radius:2px;background:#fff}' +
-                'input[type=range]::-moz-range-thumb{width:13px;height:13px;border:none;border-radius:50%;' +
-                    'background:#fff;box-shadow:0 1px 5px rgba(0,0,0,.55)}' +
-                'input[type=range]:focus-visible{outline:2px solid rgba(255,255,255,.45);outline-offset:2px;border-radius:6px}' +
-                'footer{display:flex;align-items:center;gap:8px;padding:10px 14px 13px;' +
-                    'border-top:1px solid rgba(255,255,255,.07)}' +
-                'button{font:inherit}' +
-                '.ghost{background:transparent;border:1px solid rgba(255,255,255,.16);color:#c3c6cd;font-size:12px;' +
-                    'padding:6px 12px;border-radius:7px;cursor:none;transition:border-color .15s,color .15s}' +
-                '.ghost:hover{border-color:rgba(255,255,255,.42);color:#fff}' +
-                '.prime{background:#fff;color:#131417;border:none;font-size:12px;font-weight:650;padding:7px 16px;' +
-                    'border-radius:7px;cursor:none;transition:transform .15s,box-shadow .15s}' +
-                '.prime:hover{transform:translateY(-1px);box-shadow:0 4px 14px rgba(255,255,255,.16)}' +
-                '.prime:active{transform:translateY(0)}' +
-                '.saved{flex:1;text-align:center;font-size:11px;color:#8fd6a8;opacity:0;transition:opacity .35s}' +
-                '.saved.on{opacity:1}' +
+            '*{box-sizing:border-box;margin:0;padding:0}' +
+            '.panel{width:340px;max-height:min(620px,88vh);display:flex;flex-direction:column;' +
+            'background:rgba(18,19,23,.97);border:1px solid rgba(255,255,255,.1);border-radius:12px;' +
+            'box-shadow:0 24px 60px rgba(0,0,0,.55),0 2px 12px rgba(0,0,0,.4);' +
+            'font:13px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;' +
+            'color:#e8e9ec;overflow:hidden;user-select:none}' +
+            '.panel.pop{animation:pop .18s cubic-bezier(.2,.9,.3,1.2)}' +
+            '@keyframes pop{from{opacity:0;transform:scale(.95) translateX(8px)}}' +
+            'header{display:flex;align-items:center;justify-content:space-between;padding:12px 12px 10px 16px;' +
+            'border-bottom:1px solid rgba(255,255,255,.07)}' +
+            '.ttl{font:700 13px/1 ui-monospace,"SF Mono","Cascadia Code",Menlo,Consolas,monospace;letter-spacing:.06em}' +
+            '.ver{font:600 10px/1 ui-monospace,Menlo,Consolas,monospace;color:#8b8e98;' +
+            'background:rgba(255,255,255,.07);padding:3px 6px;border-radius:4px;margin-left:8px;vertical-align:1px}' +
+            '.x{width:26px;height:26px;border:none;border-radius:7px;background:transparent;color:#9a9da6;' +
+            'font-size:13px;line-height:1;cursor:none;transition:background .15s,color .15s}' +
+            '.x:hover{background:rgba(255,255,255,.09);color:#fff}' +
+            '.rm{margin:10px 14px 0;padding:7px 10px;font-size:11px;color:#e8c98a;' +
+            'background:rgba(232,201,138,.08);border:1px solid rgba(232,201,138,.18);border-radius:7px}' +
+            '.body{overflow-y:auto;padding:2px 16px 10px;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.18) transparent}' +
+            '.body::-webkit-scrollbar{width:8px}' +
+            '.body::-webkit-scrollbar-thumb{background:rgba(255,255,255,.14);border-radius:4px}' +
+            'section h3{font-size:10px;font-weight:600;letter-spacing:.24em;color:#787b85;margin:14px 2px 4px}' +
+            '.row{display:grid;grid-template-columns:96px 1fr 62px;gap:10px;align-items:center;padding:3px 0}' +
+            '.lab{font-size:12px;color:#b7bac3;white-space:nowrap}' +
+            '.val{font:500 11px/1 ui-monospace,"SF Mono",Menlo,Consolas,monospace;color:#dfe1e6;' +
+            'text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}' +
+            'input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:26px;' +
+            'background:transparent;cursor:none;margin:0}' +
+            'input[type=range]::-webkit-slider-runnable-track{height:3px;border-radius:2px;' +
+            'background:linear-gradient(90deg,#fff var(--p,50%),rgba(255,255,255,.16) var(--p,50%))}' +
+            'input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;margin-top:-5px;' +
+            'border-radius:50%;background:#fff;box-shadow:0 1px 5px rgba(0,0,0,.55);transition:transform .15s ease}' +
+            'input[type=range]:hover::-webkit-slider-thumb{transform:scale(1.25)}' +
+            'input[type=range]:active::-webkit-slider-thumb{transform:scale(.9)}' +
+            'input[type=range]::-moz-range-track{height:3px;border-radius:2px;background:rgba(255,255,255,.16)}' +
+            'input[type=range]::-moz-range-progress{height:3px;border-radius:2px;background:#fff}' +
+            'input[type=range]::-moz-range-thumb{width:13px;height:13px;border:none;border-radius:50%;' +
+            'background:#fff;box-shadow:0 1px 5px rgba(0,0,0,.55)}' +
+            'input[type=range]:focus-visible{outline:2px solid rgba(255,255,255,.45);outline-offset:2px;border-radius:6px}' +
+            'footer{display:flex;align-items:center;gap:8px;padding:10px 14px 13px;' +
+            'border-top:1px solid rgba(255,255,255,.07)}' +
+            'button{font:inherit}' +
+            '.ghost{background:transparent;border:1px solid rgba(255,255,255,.16);color:#c3c6cd;font-size:12px;' +
+            'padding:6px 12px;border-radius:7px;cursor:none;transition:border-color .15s,color .15s}' +
+            '.ghost:hover{border-color:rgba(255,255,255,.42);color:#fff}' +
+            '.prime{background:#fff;color:#131417;border:none;font-size:12px;font-weight:650;padding:7px 16px;' +
+            'border-radius:7px;cursor:none;transition:transform .15s,box-shadow .15s}' +
+            '.prime:hover{transform:translateY(-1px);box-shadow:0 4px 14px rgba(255,255,255,.16)}' +
+            '.prime:active{transform:translateY(0)}' +
+            '.saved{flex:1;text-align:center;font-size:11px;color:#8fd6a8;opacity:0;transition:opacity .35s}' +
+            '.saved.on{opacity:1}' +
             '</style>' +
             '<div class="panel" role="dialog" aria-label="Cursor FX 设置">' +
-                '<header>' +
-                    '<span class="ttl">Cursor FX<span class="ver">v2.1</span></span>' +
-                    '<button class="x" data-act="close" aria-label="关闭">✕</button>' +
-                '</header>' +
-                (RM ? '<p class="rm">系统启用了「减少动态效果」，动画已自动弱化</p>' : '') +
-                '<div class="body">' + rowsHTML() + '</div>' +
-                '<footer>' +
-                    '<button class="ghost" data-act="reset">恢复默认</button>' +
-                    '<span class="saved">✓ 已保存</span>' +
-                    '<button class="prime" data-act="close">完成</button>' +
-                '</footer>' +
+            '<header>' +
+            '<span class="ttl">Cursor FX<span class="ver">v2.1</span></span>' +
+            '<button class="x" data-act="close" aria-label="关闭">✕</button>' +
+            '</header>' +
+            (RM ? '<p class="rm">系统启用了「减少动态效果」，动画已自动弱化</p>' : '') +
+            '<div class="body">' + rowsHTML() + '</div>' +
+            '<footer>' +
+            '<button class="ghost" data-act="reset">恢复默认</button>' +
+            '<span class="saved">✓ 已保存</span>' +
+            '<button class="prime" data-act="close">完成</button>' +
+            '</footer>' +
             '</div>';
 
         const body = sh.querySelector('.body');
