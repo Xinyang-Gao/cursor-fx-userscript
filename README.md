@@ -17,6 +17,23 @@ A Tampermonkey/Violentmonkey user script that hides the system cursor and provid
 
 ---
 
+## New in v2.2.0 (2026-07-27)
+
+- **Web API via CustomEvent** – Exposes a bidirectional communication interface for page scripts to detect, control, and query the cursor.  
+  Page developers can now:
+  - Detect if Cursor FX is loaded (`CURSORFX_READY` event).
+  - Get current status (visibility, pressed state, hover/focus, text mode, etc.).
+  - Read all current settings (including user overrides).
+  - Change any setting on the fly (e.g., `FOLLOW_SPEED`, `RING_SIZE`).
+  - Reset all settings to defaults.
+  - Toggle cursor visibility.
+  - Ping the script for liveness.
+- All interactions are asynchronous via `CustomEvent`, secure and pollution-free.
+
+See the **[Web API](#web-api-for-page-developers)** section for detailed usage.
+
+---
+
 ## New in v2.1.0
 
 - **Visual Settings Panel** – Open via the Tampermonkey menu (`⚙ 光标设置`). Adjust 19 parameters in real time with sliders. Changes apply instantly and are auto-saved.
@@ -70,6 +87,65 @@ The panel is a floating, semi‑transparent dialog styled in dark theme. It is i
 
 ---
 
+## Web API for Page Developers
+
+Starting from v2.2.0, the script exposes a communication interface using standard `CustomEvent` objects. This allows web pages (or other scripts) to detect the presence of Cursor FX and control its behavior.
+
+### Events
+
+| Event Name               | Direction         | Description |
+|--------------------------|-------------------|-------------|
+| `CURSORFX_READY`         | Script → Page     | Dispatched once when the script finishes initialization. Contains `{ version, scriptVersion }`. |
+| `CURSORFX_REQUEST`       | Page → Script     | Sent by the page to invoke an action. Must include `detail: { action, requestId?, payload? }`. |
+| `CURSORFX_RESPONSE`      | Script → Page     | The script’s reply to a request, containing `{ requestId, result }`. |
+
+### Supported Actions
+
+| Action            | Payload (optional)                  | Result                          |
+|-------------------|-------------------------------------|---------------------------------|
+| `ping`            | –                                   | `{ status: 'alive', version }`  |
+| `getStatus`       | –                                   | `{ visible, pressed, hoverEl, focusEl, textMode, ringDim, scrollOffset, dotScale, ringScale }` |
+| `getSettings`     | –                                   | `{ settings: { ...all CFG values } }` |
+| `setSetting`      | `{ key, value }`                    | `{ success: true, key, value }` or `{ success: false, error }` |
+| `resetSettings`   | –                                   | `{ success: true }`             |
+| `toggleVisible`   | –                                   | `{ visible: newState }`         |
+| `getVersion`      | –                                   | `{ version, scriptVersion }`    |
+
+### Example Usage (Page JavaScript)
+
+```javascript
+// 1. Listen for the "ready" signal
+window.addEventListener('CURSORFX_READY', (e) => {
+    console.log('Cursor FX loaded:', e.detail.scriptVersion);
+    // Now you can call the API
+    callCursorFX('getStatus');
+});
+
+// 2. Listen for responses
+window.addEventListener('CURSORFX_RESPONSE', (e) => {
+    const { requestId, result } = e.detail;
+    console.log(`[${requestId}]`, result);
+});
+
+// 3. Helper to send a request
+function callCursorFX(action, payload = {}) {
+    const requestId = 'cfx_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+    window.dispatchEvent(new CustomEvent('CURSORFX_REQUEST', {
+        detail: { action, requestId, payload }
+    }));
+}
+
+// 4. Example: change follow speed
+callCursorFX('setSetting', { key: 'FOLLOW_SPEED', value: 30 });
+
+// 5. Example: toggle cursor visibility
+callCursorFX('toggleVisible');
+```
+
+> **Note**: All numeric values are clamped to the same ranges as the settings panel. Invalid keys or values will return an error.
+
+---
+
 ## Keyboard & Accessibility
 
 - **Tab** focus on interactive elements will also trigger the ring fitting (like mouse hover), improving keyboard navigation experience.
@@ -111,6 +187,23 @@ MIT © [Xinyang-Gao](https://github.com/Xinyang-Gao)
 - **点击弹簧** – 按下时弹性缩放，刚度与阻尼可调。
 - **滚动拖尾** – 滚动时圆环带有惯性偏移。
 - **性能优化** – 全部使用 CSS `transform`（合成器层），不触发回流；空闲时自动暂停 `requestAnimationFrame`。
+
+---
+
+## v2.2.0 新功能 (2026-07-27)
+
+- **通过 CustomEvent 暴露 Web API** – 为页面脚本提供双向通信接口，用于检测、控制和查询光标状态。  
+  页面开发者现在可以：
+  - 检测 Cursor FX 是否已加载（`CURSORFX_READY` 事件）。
+  - 获取当前状态（可见性、按压、悬停/聚焦、文本模式等）。
+  - 读取所有当前设置（包含用户覆盖值）。
+  - 动态修改任意设置（如 `FOLLOW_SPEED`、`RING_SIZE`）。
+  - 一键恢复所有默认设置。
+  - 切换光标显示/隐藏。
+  - 发送 ping 检测脚本存活。
+- 所有交互通过 `CustomEvent` 实现异步通信，安全无污染。
+
+详见 **[网页接口](#网页接口供页面开发者使用)** 章节。
 
 ---
 
@@ -164,6 +257,65 @@ MIT © [Xinyang-Gao](https://github.com/Xinyang-Gao)
 - 所有滑块**实时生效**，调整后立刻看到变化。
 - 参数在防抖（350 ms）后自动保存。
 - 面板可通过 **✕** 按钮、按 **Esc** 键或点击面板外部关闭。
+
+---
+
+## 网页接口（供页面开发者使用）
+
+从 v2.2.0 开始，脚本通过标准 `CustomEvent` 暴露通信接口。网页（或其他脚本）可以检测 Cursor FX 是否存在，并控制其行为。
+
+### 事件列表
+
+| 事件名               | 方向          | 说明 |
+|----------------------|---------------|------|
+| `CURSORFX_READY`     | 脚本 → 页面   | 脚本初始化完成后触发一次，包含 `{ version, scriptVersion }`。 |
+| `CURSORFX_REQUEST`   | 页面 → 脚本   | 页面发送请求，需包含 `detail: { action, requestId?, payload? }`。 |
+| `CURSORFX_RESPONSE`  | 脚本 → 页面   | 脚本回复请求，包含 `{ requestId, result }`。 |
+
+### 支持的动作
+
+| Action            | Payload (可选)                  | 返回结果                      |
+|-------------------|---------------------------------|-------------------------------|
+| `ping`            | –                               | `{ status: 'alive', version }` |
+| `getStatus`       | –                               | `{ visible, pressed, hoverEl, focusEl, textMode, ringDim, scrollOffset, dotScale, ringScale }` |
+| `getSettings`     | –                               | `{ settings: { ...所有当前 CFG 值 } }` |
+| `setSetting`      | `{ key, value }`                | `{ success: true, key, value }` 或 `{ success: false, error }` |
+| `resetSettings`   | –                               | `{ success: true }`           |
+| `toggleVisible`   | –                               | `{ visible: 新状态 }`         |
+| `getVersion`      | –                               | `{ version, scriptVersion }`  |
+
+### 使用示例（页面 JavaScript）
+
+```javascript
+// 1. 监听脚本就绪
+window.addEventListener('CURSORFX_READY', (e) => {
+    console.log('Cursor FX 已加载:', e.detail.scriptVersion);
+    // 可在此处调用 API
+    callCursorFX('getStatus');
+});
+
+// 2. 监听响应
+window.addEventListener('CURSORFX_RESPONSE', (e) => {
+    const { requestId, result } = e.detail;
+    console.log(`[${requestId}]`, result);
+});
+
+// 3. 封装请求函数
+function callCursorFX(action, payload = {}) {
+    const requestId = 'cfx_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+    window.dispatchEvent(new CustomEvent('CURSORFX_REQUEST', {
+        detail: { action, requestId, payload }
+    }));
+}
+
+// 4. 示例：修改跟随速度
+callCursorFX('setSetting', { key: 'FOLLOW_SPEED', value: 30 });
+
+// 5. 示例：切换光标显示
+callCursorFX('toggleVisible');
+```
+
+> **注意**：所有数值会被钳制到与设置面板相同的范围。无效的键名或值会返回错误。
 
 ---
 
