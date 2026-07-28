@@ -2,7 +2,7 @@
 // @name         Cursor FX
 // @name:zh-CN   自定义鼠标光标特效
 // @namespace    https://github.com/Xinyang-Gao/cursor-fx-userscript
-// @version      2.3.1
+// @version      2.4.0
 // @description  Smooth custom cursor: delayed ring follow, hover fitting, text caret mode, click spring scale, scroll trail. GPU-composited, frame-rate independent, auto-pauses when idle. Settings panel via the Tampermonkey menu.
 // @description:zh-CN  隐藏系统指针，使用圆点 + 圆环自定义光标：延迟跟随、悬停贴合、文本竖条、点击弹性缩放、滚动拖尾。transform 合成层定位，帧率无关平滑，空闲自动暂停。点击篡改猴菜单中的「⚙ 光标设置」打开设置面板，实时调节、自动保存。
 // @author       Xinyang-Gao
@@ -10,6 +10,7 @@
 // @match        *://*/*
 // @run-at       document-start
 // @grant        GM_registerMenuCommand
+// @grant        GM_unregisterMenuCommand
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_deleteValue
@@ -23,7 +24,7 @@
 (function () {
     'use strict';
 
-    const SCRIPT_VERSION = '2.3.1';
+    const SCRIPT_VERSION = '2.4.0';
     const WEB_API_VERSION = '1.0';
 
     // ==================== I18N ====================
@@ -54,7 +55,7 @@
                 },
                 settings: {
                     language: '界面语言',
-                    langOptionZh: '简体中文',   // 始终显示语言自身名称
+                    langOptionZh: '简体中文',
                     langOptionEn: 'English'
                 }
             }
@@ -92,12 +93,14 @@
         }
     };
 
-    /** 获取初始语言：存储 → navigator.languages → navigator.language → 'en' */
+    // [FIX #10] 统一存储 key 前缀
+    const STORE_PREFIX = 'CursorFX.';
+
     function getInitialLang() {
         try {
             const stored = typeof GM_getValue === 'function'
-                ? GM_getValue('CursorFX.lang', null)
-                : localStorage.getItem('CursorFX.lang');
+                ? GM_getValue(STORE_PREFIX + 'lang', null)
+                : localStorage.getItem(STORE_PREFIX + 'lang');
             if (stored && LANGUAGES[stored]) return stored;
         } catch (_) { /* ignore */ }
 
@@ -105,7 +108,7 @@
         for (const lang of candidates) {
             if (LANGUAGES[lang]) return lang;
             const base = lang.split('-')[0];
-            if (base === 'zh') return 'zh-CN';       // zh-TW / zh-HK → zh-CN
+            if (base === 'zh') return 'zh-CN';
             if (LANGUAGES[base]) return base;
         }
         return 'en';
@@ -113,10 +116,6 @@
 
     let CURRENT_LANG = getInitialLang();
 
-    /**
-     * 翻译函数，支持点分路径 + {placeholder} 替换
-     * t('version', { v: '2.3.1' }) → "v2.3.1"
-     */
     function t(key, params = {}) {
         const dict = LANGUAGES[CURRENT_LANG].dict;
         let val = key.split('.').reduce((o, k) => (o ? o[k] : null), dict);
@@ -128,60 +127,61 @@
 
     function saveLang(lang) {
         try {
-            if (typeof GM_setValue === 'function') GM_setValue('CursorFX.lang', lang);
-            else localStorage.setItem('CursorFX.lang', lang);
+            if (typeof GM_setValue === 'function') GM_setValue(STORE_PREFIX + 'lang', lang);
+            else localStorage.setItem(STORE_PREFIX + 'lang', lang);
         } catch (_) { /* ignore */ }
     }
 
     // ==================== 可调参数 ====================
     const DEFAULTS = {
-        DOT_SIZE: 8,            // 圆点直径 (px)
-        RING_SIZE: 40,          // 圆环默认直径 (px)
-        RING_BORDER: 1.5,       // 圆环边框宽度 (px)
-        RING_ALPHA: 0.9,        // 圆环基础不透明度
-        TEXT_RING_ALPHA: 0.4,   // 文本区圆环不透明度
-        TEXT_RING_SIZE: 24,     // 文本区圆环直径 (px)
-        MAX_FIT_SIZE: 200,      // 元素宽高同时超过此值则不贴合 (px)
-        FIT_PADDING: 6,         // 贴合时向外留白，视觉更透气 (px)
-        TEXT_BAR_W: 2,          // 文本竖条宽度 (px)
-        TEXT_BAR_H: 22,         // 文本竖条高度 (px)
-        FOLLOW_SPEED: 16,       // 自由跟随平滑速度（越大越跟手，/秒）
-        FIT_SPEED: 26,          // 贴合吸附平滑速度
-        SHAPE_SPEED: 18,        // 圆环尺寸/圆角变化平滑速度
-        SCROLL_MAX: 30,         // 滚动拖尾最大偏移 (px)
-        SCROLL_DECAY: 7,        // 拖尾衰减速度（越大越快收回）
-        CLICK_SCALE: 0.78,      // 按下时缩放
-        SPRING_K: 520,          // 点击弹簧刚度
-        SPRING_DAMP: 21,        // 点击弹簧阻尼（越小回弹越明显）
-        IDLE_PAUSE_MS: 2500,    // 空闲多久后自动暂停 rAF
+        DOT_SIZE: 8,
+        RING_SIZE: 40,
+        RING_BORDER: 1.5,
+        RING_ALPHA: 0.9,
+        TEXT_RING_ALPHA: 0.4,
+        TEXT_RING_SIZE: 24,
+        MAX_FIT_SIZE: 200,
+        FIT_PADDING: 6,
+        TEXT_BAR_W: 2,
+        TEXT_BAR_H: 22,
+        FOLLOW_SPEED: 16,
+        FIT_SPEED: 26,
+        SHAPE_SPEED: 18,
+        SCROLL_MAX: 30,
+        SCROLL_DECAY: 7,
+        CLICK_SCALE: 0.78,
+        SPRING_K: 520,
+        SPRING_DAMP: 21,
+        IDLE_PAUSE_MS: 2500,
     };
-    const CFG = { ...DEFAULTS };// 运行时实际生效值 = 默认值 + 用户设置（+ 减少动态效果覆盖）
+    const CFG = { ...DEFAULTS };
 
     const clamp = (v, a, b) => v < a ? a : (v > b ? b : v);
 
     if (matchMedia('(pointer: coarse)').matches) return;
 
     // ---------- 设置存储 ----------
+    // [FIX #10] 统一使用 STORE_PREFIX
     const store = {
         read(k, fb) {
             try {
                 const raw = typeof GM_getValue === 'function'
-                    ? GM_getValue(k, null)
-                    : localStorage.getItem('CursorFX.' + k);
+                    ? GM_getValue(STORE_PREFIX + k, null)
+                    : localStorage.getItem(STORE_PREFIX + k);
                 return raw == null ? fb : JSON.parse(raw);
             } catch { return fb; }
         },
         write(k, v) {
             try {
                 const s = JSON.stringify(v);
-                if (typeof GM_setValue === 'function') GM_setValue(k, s);
-                else localStorage.setItem('CursorFX.' + k, s);
+                if (typeof GM_setValue === 'function') GM_setValue(STORE_PREFIX + k, s);
+                else localStorage.setItem(STORE_PREFIX + k, s);
             } catch { /* ignore */ }
         },
         erase(k) {
             try {
-                if (typeof GM_deleteValue === 'function') GM_deleteValue(k);
-                else localStorage.removeItem('CursorFX.' + k);
+                if (typeof GM_deleteValue === 'function') GM_deleteValue(STORE_PREFIX + k);
+                else localStorage.removeItem(STORE_PREFIX + k);
             } catch { /* ignore */ }
         },
     };
@@ -208,10 +208,10 @@
         { g: 'text',       key: 'TEXT_RING_ALPHA',label: 'TEXT_RING_ALPHA',min: 0.1, max: 1,    step: 0.05, unit: '' },
         { g: 'other',      key: 'IDLE_PAUSE_MS',  label: 'IDLE_PAUSE_MS',  min: 500, max: 10000,step: 250,  unit: 'ms' },
     ];
-    const FMAP = {};
+    const FMAP = Object.create(null);
     FIELDS.forEach(f => FMAP[f.key] = f);
 
-    const overrides = {};
+    const overrides = Object.create(null);
     {
         const raw = store.read('overrides', {});
         for (const f of FIELDS) {
@@ -221,6 +221,10 @@
     }
 
     const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    // [FIX #11] 记录被 RM 覆盖的 key，用于 UI 禁用
+    const RM_KEYS = RM
+        ? new Set(['FOLLOW_SPEED', 'FIT_SPEED', 'SHAPE_SPEED', 'SCROLL_MAX', 'SPRING_K', 'SPRING_DAMP'])
+        : null;
     const RM_PATCH = RM ? {
         FOLLOW_SPEED: 1e4, FIT_SPEED: 1e4, SHAPE_SPEED: 1e4,
         SCROLL_MAX: 0, SPRING_K: 1e4, SPRING_DAMP: 1e4,
@@ -292,28 +296,45 @@
         ].join(',');
 
         // ----- 状态 -----
-        let mx = innerWidth / 2, my = innerHeight / 2;              // 指针真实位置
-        let rx = mx, ry = my;                                       // 环当前位置
-        let rw = CFG.RING_SIZE, rh = CFG.RING_SIZE, rr = CFG.RING_SIZE / 2; // 环当前尺寸/圆角
-        let lastW = -1, lastH = -1, lastR = -1;                     // 上次写入值（用于跳过冗余写入）
-        let tw, th, tr;                                             // 环目标尺寸/圆角
-        let sX = 0, sY = 0;                                         // 滚动拖尾偏移
-        let dotS = 1, ringS = 1, dotV = 0, ringV = 0;               // 点击弹簧状态
+        let mx = innerWidth / 2, my = innerHeight / 2;
+        let rx = mx, ry = my;
+        let rw = CFG.RING_SIZE, rh = CFG.RING_SIZE, rr = CFG.RING_SIZE / 2;
+        let lastW = -1, lastH = -1, lastR = -1;
+        let tw, th, tr;
+        let sX = 0, sY = 0;
+        let dotS = 1, ringS = 1, dotV = 0, ringV = 0;
         let pressed = false;
-        let hoverEl = null, hoverRad = 0;                           // 鼠标悬停的交互元素
-        let focusEl = null, focusRad = 0;                           // 键盘聚焦的交互元素
+        let hoverEl = null, hoverRad = 0;
+        let focusEl = null, focusRad = 0;
         let textEl = null, dotIsBar = false, ringDim = false;
         let lastInput = 0, lastT = 0, rafId = 0;
         let shown = false, inside = true;
-        const dotCache = {}, ringCache = {};
+
+        // [OPT #9] 数值缓存代替字符串比较
+        const dotCache = { x: NaN, y: NaN, s: NaN };
+        const ringCache = { x: NaN, y: NaN, s: NaN };
+
+        // [FIX #3] 解析复合 borderRadius，取最大值
+        function parseBorderRadius(el) {
+            const br = getComputedStyle(el).borderRadius || '0px';
+            if (br.indexOf('%') > -1) {
+                const r = el.getBoundingClientRect();
+                return parseFloat(br) / 100 * Math.min(r.width, r.height);
+            }
+            // 复合值如 "10px 20px 30px 40px"，取最大值
+            const parts = br.split(/\s+/);
+            let max = 0;
+            for (const p of parts) {
+                const v = parseFloat(p);
+                if (v > max) max = v;
+            }
+            return max;
+        }
 
         function measure(el) {
             const r = el.getBoundingClientRect();
             if (r.width > CFG.MAX_FIT_SIZE && r.height > CFG.MAX_FIT_SIZE) return null;
-            const br = getComputedStyle(el).borderRadius || '0px';
-            return br.indexOf('%') > -1
-                ? parseFloat(br) / 100 * Math.min(r.width, r.height)  // 百分比圆角（圆形/胶囊）换算
-                : parseFloat(br) || 0;
+            return parseBorderRadius(el);
         }
 
         function show() {
@@ -334,6 +355,13 @@
             if (!rafId) { lastT = lastInput; rafId = requestAnimationFrame(tick); }
         }
 
+        // [FIX #12] 页面可见性变化时重置 lastT，避免回来时跳变
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden && rafId) {
+                lastT = performance.now();
+            }
+        });
+
         addEventListener('pointermove', (e) => {
             if (e.pointerType === 'touch') return;
             mx = e.clientX; my = e.clientY;
@@ -345,23 +373,36 @@
         addEventListener('pointerup', () => { pressed = false; wake(); });
         addEventListener('pointercancel', () => { pressed = false; wake(); });
 
+        // [FIX #4] 改进 deltaMode===2 的处理
         addEventListener('wheel', (e) => {
             if (hoverEl || focusEl) return;
-            const unit = e.deltaMode === 1 ? 16 : (e.deltaMode === 2 ? innerHeight : 1);
-            sX = clamp(sX - clamp(e.deltaX * unit, -80, 80), -CFG.SCROLL_MAX, CFG.SCROLL_MAX);
-            sY = clamp(sY - clamp(e.deltaY * unit, -80, 80), -CFG.SCROLL_MAX, CFG.SCROLL_MAX);
+            let dx = e.deltaX, dy = e.deltaY;
+            if (e.deltaMode === 1) { dx *= 16; dy *= 16; }       // 行 → px
+            else if (e.deltaMode === 2) { dx *= 120; dy *= 120; } // 页 → 近似 px（而非 innerHeight）
+            sX = clamp(sX - clamp(dx, -80, 80), -CFG.SCROLL_MAX, CFG.SCROLL_MAX);
+            sY = clamp(sY - clamp(dy, -80, 80), -CFG.SCROLL_MAX, CFG.SCROLL_MAX);
             wake();
         }, { passive: true });
 
+        // [FIX #5 + OPT #7] mouseover 中增加 isConnected 检查 + 合并 closest 调用
         document.addEventListener('mouseover', (e) => {
             const tgt = e.target;
             if (!tgt || tgt.nodeType !== 1) return;
+
+            // 文本检测
             const txt = tgt.closest(SEL_TEXT) || null;
             if (txt !== textEl) {
                 textEl = txt;
                 setDotShape(!!txt);
                 setRingAlpha(!!txt);
             }
+
+            // 交互元素检测 — 先验证旧引用有效性
+            if (hoverEl && !hoverEl.isConnected) {
+                hoverEl = null;
+                hoverRad = 0;
+            }
+
             const inter = tgt.closest(SEL_INTERACTIVE);
             if (inter !== hoverEl) {
                 let next = null, rad = 0;
@@ -369,7 +410,8 @@
                     const m = measure(inter);
                     if (m !== null) { next = inter; rad = m; }
                 }
-                hoverEl = next; hoverRad = rad;
+                hoverEl = next;
+                hoverRad = rad;
             }
         });
 
@@ -402,9 +444,15 @@
             ring.style.setProperty('--ccA', dim ? CFG.TEXT_RING_ALPHA : CFG.RING_ALPHA);
         }
 
+        // [OPT #9] 数值级缓存，减少字符串拼接和 GC
         function setT(el, x, y, s, cache) {
-            const v = 'translate3d(' + x.toFixed(2) + 'px,' + y.toFixed(2) + 'px,0) translate(-50%,-50%) scale(' + s.toFixed(3) + ')';
-            if (cache.v !== v) { cache.v = v; el.style.transform = v; }
+            // 精度截断到 0.01px / 0.001 scale，避免无意义更新
+            const qx = Math.round(x * 100) / 100;
+            const qy = Math.round(y * 100) / 100;
+            const qs = Math.round(s * 1000) / 1000;
+            if (cache.x === qx && cache.y === qy && cache.s === qs) return;
+            cache.x = qx; cache.y = qy; cache.s = qs;
+            el.style.transform = 'translate3d(' + qx + 'px,' + qy + 'px,0) translate(-50%,-50%) scale(' + qs + ')';
         }
 
         setT(dot, mx, my, 1, dotCache);
@@ -415,7 +463,8 @@
                 const b = dotIsBar; dotIsBar = !b; setDotShape(b);
                 const d = ringDim; ringDim = !d; setRingAlpha(d);
                 lastW = lastH = lastR = -1;
-                dotCache.v = ringCache.v = '';
+                dotCache.x = dotCache.y = dotCache.s = NaN;
+                ringCache.x = ringCache.y = ringCache.s = NaN;
                 wake();
             }
         };
@@ -557,7 +606,7 @@
         }
     }
 
-    // 设置面板
+    // ==================== 设置面板 ====================
     let panelHost = null, panelOpen = false;
 
     const decimals = f => String(f.step).includes('.') ? String(f.step).split('.')[1].length : 0;
@@ -574,21 +623,20 @@
             }
             const v = curVal(f);
             const p = ((v - f.min) / (f.max - f.min) * 100).toFixed(1);
+            // [FIX #11] RM 模式下禁用被覆盖的字段
+            const disabled = RM_KEYS && RM_KEYS.has(f.key) ? ' disabled' : '';
+            const disabledStyle = disabled ? ' style="opacity:.4;pointer-events:none"' : '';
             html +=
-                '<label class="row">' +
+                '<label class="row"' + disabledStyle + '>' +
                 '<span class="lab">' + t('labels.' + f.label) + '</span>' +
                 '<input type="range" data-k="' + f.key + '" min="' + f.min + '" max="' + f.max +
-                '" step="' + f.step + '" value="' + v + '" style="--p:' + p + '%">' +
+                '" step="' + f.step + '" value="' + v + '" style="--p:' + p + '%"' + disabled + '>' +
                 '<span class="val">' + fmt(v, f) + '</span>' +
                 '</label>';
         }
         return html + '</section>';
     }
 
-    /**
-     * 构建面板（每次调用都会创建全新节点）
-     * 修复：开头防御性移除旧节点，杜绝叠加
-     */
     function buildPanel() {
         if (panelHost) {
             panelHost.remove();
@@ -604,7 +652,6 @@
         hs.setProperty('z-index', '2147483646', 'important');
         hs.setProperty('color-scheme', 'dark', 'important');
 
-        // 修复：使用 mode:'open'，确保 openPanel 可通过 panelHost.shadowRoot 访问
         const sh = panelHost.attachShadow({ mode: 'open' });
 
         sh.innerHTML =
@@ -724,14 +771,14 @@
             scheduleSave();
         });
 
-        // 语言切换：关闭旧面板 → 用新语言重建 → 打开
         langSelect.addEventListener('change', (e) => {
             const newLang = e.target.value;
             if (LANGUAGES[newLang] && newLang !== CURRENT_LANG) {
                 CURRENT_LANG = newLang;
                 saveLang(newLang);
-                closePanel();   // 彻底移除旧节点
-                openPanel();    // 用新语言重建并显示
+                updateMenuLabel(); // [FIX #2] 同步更新菜单标签
+                closePanel();
+                openPanel();
             }
         });
 
@@ -759,23 +806,16 @@
         document.body.appendChild(panelHost);
     }
 
-    /**
-     * 打开面板（不存在则构建）
-     * 修复：shadowRoot 现在可访问（mode:'open'）
-     */
     function openPanel() {
         if (!panelHost) buildPanel();
         panelOpen = true;
         panelHost.style.display = 'block';
         const p = panelHost.shadowRoot.querySelector('.panel');
         p.classList.remove('pop');
-        void p.offsetWidth;          // 强制回流以重启动画
+        void p.offsetWidth;
         p.classList.add('pop');
     }
 
-    /**
-     * 关闭面板：彻底移除节点，杜绝叠加
-     */
     function closePanel() {
         panelOpen = false;
         if (panelHost) {
@@ -793,12 +833,26 @@
     }
 
     addEventListener('keydown', (e) => { if (e.key === 'Escape') closePanel(); });
+
+    // [FIX #1] 使用 composedPath() 正确检测 Shadow DOM 内部点击
     document.addEventListener('pointerdown', (e) => {
-        if (panelOpen && panelHost && !panelHost.contains(e.target)) closePanel();
+        if (!panelOpen || !panelHost) return;
+        const path = e.composedPath ? e.composedPath() : [];
+        if (!path.includes(panelHost)) closePanel();
     }, true);
 
     // ---------- 菜单命令 ----------
-    if (typeof GM_registerMenuCommand === 'function') {
-        GM_registerMenuCommand(t('menu.settings'), togglePanel);
+    // [FIX #2] 支持语言切换后更新菜单标签
+    let menuCmdId = null;
+
+    function updateMenuLabel() {
+        if (typeof GM_unregisterMenuCommand === 'function' && menuCmdId != null) {
+            GM_unregisterMenuCommand(menuCmdId);
+        }
+        if (typeof GM_registerMenuCommand === 'function') {
+            menuCmdId = GM_registerMenuCommand(t('menu.settings'), togglePanel);
+        }
     }
+
+    updateMenuLabel();
 })();
