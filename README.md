@@ -1,6 +1,4 @@
-<!-- <p align="center"><img src="https://raw.githubusercontent.com/Xinyang-Gao/cursor-fx-userscript/main/assets/logo.png" alt="Cursor FX" width="120" /></p> -->
-
-<h1 align="center">Cursor FX</h1>
+<h1 align="center"><img src="https://raw.githubusercontent.com/Xinyang-Gao/cursor-fx-userscript/main/assets/logo.png" width="40" />   Cursor FX</h1>
 
 <p align="center">
   <strong>Smooth custom cursor with spring physics — a single userscript, zero dependencies.</strong>
