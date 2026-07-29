@@ -2,7 +2,7 @@
 // @name         Cursor FX
 // @name:zh-CN   自定义鼠标光标特效
 // @namespace    https://github.com/Xinyang-Gao/cursor-fx-userscript
-// @version      2.7.0
+// @version      2.7.1
 // @description  Smooth custom cursor: delayed ring follow, hover fitting, text caret mode, click spring scale, scroll trail. GPU-composited, frame-rate independent, auto-pauses when idle. Settings panel via the Tampermonkey menu.
 // @description:zh-CN  隐藏系统指针，使用圆点 + 圆环自定义光标：延迟跟随、悬停贴合、文本竖条、点击弹性缩放、滚动拖尾。transform 合成层定位，帧率无关平滑，空闲自动暂停。点击篡改猴菜单中的「⚙ 光标设置」打开设置面板，实时调节、自动保存。
 // @author       Xinyang-Gao
@@ -25,7 +25,7 @@
 (function () {
     'use strict';
 
-    const SCRIPT_VERSION = '2.7.0';
+    const SCRIPT_VERSION = '2.7.1';
     const WEB_API_VERSION = '1.3';
 
     // ==================== I18N ====================
@@ -139,7 +139,7 @@
         ENABLE_DOT: true,
         ENABLE_RING: true,
         HIDE_CURSOR: true,
-        
+
         DOT_SIZE: 8,
         RING_SIZE: 40,
         RING_BORDER: 1.5,
@@ -193,32 +193,31 @@
     };
 
     // ---------- 字段定义与依赖关系 ----------
-    // deps: 该字段依赖哪些布尔开关，若任一为 false 则禁用
     const FIELDS = [
-        { g: 'appearance', key: 'ENABLE_DOT',     label: 'ENABLE_DOT',     type: 'bool' },
-        { g: 'appearance', key: 'ENABLE_RING',    label: 'ENABLE_RING',    type: 'bool' },
-        { g: 'other',      key: 'HIDE_CURSOR',    label: 'HIDE_CURSOR',    type: 'bool' },
-        
-        { g: 'appearance', key: 'DOT_SIZE',       label: 'DOT_SIZE',       min: 2,   max: 24,   step: 1,    unit: 'px', deps: ['ENABLE_DOT'] },
-        { g: 'appearance', key: 'RING_SIZE',      label: 'RING_SIZE',      min: 16,  max: 96,   step: 2,    unit: 'px', deps: ['ENABLE_RING'] },
-        { g: 'appearance', key: 'RING_BORDER',    label: 'RING_BORDER',    min: 0.5, max: 6,    step: 0.5,  unit: 'px', deps: ['ENABLE_RING'] },
-        { g: 'appearance', key: 'RING_ALPHA',     label: 'RING_ALPHA',     min: 0.1, max: 1,    step: 0.05, unit: '',    deps: ['ENABLE_RING'] },
-        { g: 'fit',        key: 'FIT_PADDING',    label: 'FIT_PADDING',    min: 0,   max: 24,   step: 1,    unit: 'px', deps: ['ENABLE_RING'] },
-        { g: 'fit',        key: 'MAX_FIT_SIZE',   label: 'MAX_FIT_SIZE',   min: 80,  max: 480,  step: 10,   unit: 'px', deps: ['ENABLE_RING'] },
-        { g: 'follow',     key: 'FOLLOW_SPEED',   label: 'FOLLOW_SPEED',   min: 2,   max: 40,   step: 1,    unit: '' },
-        { g: 'follow',     key: 'FIT_SPEED',      label: 'FIT_SPEED',      min: 4,   max: 80,   step: 1,    unit: '',    deps: ['ENABLE_RING'] },
-        { g: 'follow',     key: 'SHAPE_SPEED',    label: 'SHAPE_SPEED',    min: 4,   max: 80,   step: 1,    unit: '',    deps: ['ENABLE_RING'] },
-        { g: 'click',      key: 'CLICK_SCALE',    label: 'CLICK_SCALE',    min: 0.4, max: 1,    step: 0.02, unit: '',    deps: ['ENABLE_DOT', 'ENABLE_RING'] },
-        { g: 'click',      key: 'SPRING_K',       label: 'SPRING_K',       min: 100, max: 1200, step: 20,   unit: '',    deps: ['ENABLE_DOT', 'ENABLE_RING'] },
-        { g: 'click',      key: 'SPRING_DAMP',    label: 'SPRING_DAMP',    min: 5,   max: 40,   step: 1,    unit: '',    deps: ['ENABLE_DOT', 'ENABLE_RING'] },
-        { g: 'scroll',     key: 'SCROLL_ENABLED', label: 'SCROLL_ENABLED', type: 'bool' },
-        { g: 'scroll',     key: 'SCROLL_MAX',     label: 'SCROLL_MAX',     min: 0,   max: 80,   step: 2,    unit: 'px', deps: ['SCROLL_ENABLED'] },
-        { g: 'scroll',     key: 'SCROLL_DECAY',   label: 'SCROLL_DECAY',   min: 1,   max: 20,   step: 0.5,  unit: '',    deps: ['SCROLL_ENABLED'] },
-        { g: 'text',       key: 'TEXT_BAR_W',     label: 'TEXT_BAR_W',     min: 1,   max: 6,    step: 0.5,  unit: 'px', deps: ['ENABLE_DOT'] },
-        { g: 'text',       key: 'TEXT_BAR_H',     label: 'TEXT_BAR_H',     min: 12,  max: 40,   step: 1,    unit: 'px', deps: ['ENABLE_DOT'] },
-        { g: 'text',       key: 'TEXT_RING_SIZE', label: 'TEXT_RING_SIZE', min: 12,  max: 64,   step: 2,    unit: 'px', deps: ['ENABLE_RING'] },
-        { g: 'text',       key: 'TEXT_RING_ALPHA',label: 'TEXT_RING_ALPHA',min: 0.1, max: 1,    step: 0.05, unit: '',    deps: ['ENABLE_RING'] },
-        { g: 'other',      key: 'IDLE_PAUSE_MS',  label: 'IDLE_PAUSE_MS',  min: 500, max: 10000,step: 250,  unit: 'ms' },
+        { g: 'appearance', key: 'ENABLE_DOT', label: 'ENABLE_DOT', type: 'bool' },
+        { g: 'appearance', key: 'ENABLE_RING', label: 'ENABLE_RING', type: 'bool' },
+        { g: 'other', key: 'HIDE_CURSOR', label: 'HIDE_CURSOR', type: 'bool' },
+
+        { g: 'appearance', key: 'DOT_SIZE', label: 'DOT_SIZE', min: 2, max: 24, step: 1, unit: 'px', deps: ['ENABLE_DOT'] },
+        { g: 'appearance', key: 'RING_SIZE', label: 'RING_SIZE', min: 16, max: 96, step: 2, unit: 'px', deps: ['ENABLE_RING'] },
+        { g: 'appearance', key: 'RING_BORDER', label: 'RING_BORDER', min: 0.5, max: 6, step: 0.5, unit: 'px', deps: ['ENABLE_RING'] },
+        { g: 'appearance', key: 'RING_ALPHA', label: 'RING_ALPHA', min: 0.1, max: 1, step: 0.05, unit: '', deps: ['ENABLE_RING'] },
+        { g: 'fit', key: 'FIT_PADDING', label: 'FIT_PADDING', min: 0, max: 24, step: 1, unit: 'px', deps: ['ENABLE_RING'] },
+        { g: 'fit', key: 'MAX_FIT_SIZE', label: 'MAX_FIT_SIZE', min: 80, max: 480, step: 10, unit: 'px', deps: ['ENABLE_RING'] },
+        { g: 'follow', key: 'FOLLOW_SPEED', label: 'FOLLOW_SPEED', min: 2, max: 40, step: 1, unit: '' },
+        { g: 'follow', key: 'FIT_SPEED', label: 'FIT_SPEED', min: 4, max: 80, step: 1, unit: '', deps: ['ENABLE_RING'] },
+        { g: 'follow', key: 'SHAPE_SPEED', label: 'SHAPE_SPEED', min: 4, max: 80, step: 1, unit: '', deps: ['ENABLE_RING'] },
+        { g: 'click', key: 'CLICK_SCALE', label: 'CLICK_SCALE', min: 0.4, max: 1, step: 0.02, unit: '', deps: ['ENABLE_DOT', 'ENABLE_RING'] },
+        { g: 'click', key: 'SPRING_K', label: 'SPRING_K', min: 100, max: 1200, step: 20, unit: '', deps: ['ENABLE_DOT', 'ENABLE_RING'] },
+        { g: 'click', key: 'SPRING_DAMP', label: 'SPRING_DAMP', min: 5, max: 40, step: 1, unit: '', deps: ['ENABLE_DOT', 'ENABLE_RING'] },
+        { g: 'scroll', key: 'SCROLL_ENABLED', label: 'SCROLL_ENABLED', type: 'bool' },
+        { g: 'scroll', key: 'SCROLL_MAX', label: 'SCROLL_MAX', min: 0, max: 80, step: 2, unit: 'px', deps: ['SCROLL_ENABLED'] },
+        { g: 'scroll', key: 'SCROLL_DECAY', label: 'SCROLL_DECAY', min: 1, max: 20, step: 0.5, unit: '', deps: ['SCROLL_ENABLED'] },
+        { g: 'text', key: 'TEXT_BAR_W', label: 'TEXT_BAR_W', min: 1, max: 6, step: 0.5, unit: 'px', deps: ['ENABLE_DOT'] },
+        { g: 'text', key: 'TEXT_BAR_H', label: 'TEXT_BAR_H', min: 12, max: 40, step: 1, unit: 'px', deps: ['ENABLE_DOT'] },
+        { g: 'text', key: 'TEXT_RING_SIZE', label: 'TEXT_RING_SIZE', min: 12, max: 64, step: 2, unit: 'px', deps: ['ENABLE_RING'] },
+        { g: 'text', key: 'TEXT_RING_ALPHA', label: 'TEXT_RING_ALPHA', min: 0.1, max: 1, step: 0.05, unit: '', deps: ['ENABLE_RING'] },
+        { g: 'other', key: 'IDLE_PAUSE_MS', label: 'IDLE_PAUSE_MS', min: 500, max: 10000, step: 250, unit: 'ms' },
     ];
     const FMAP = Object.create(null);
     FIELDS.forEach(f => FMAP[f.key] = f);
@@ -248,10 +247,10 @@
     // ---------- 样式 ----------
     const style = document.createElement('style');
     function renderCSS() {
-        const cursorRule = CFG.HIDE_CURSOR 
-            ? '*, *::before, *::after { cursor: none !important; }' 
+        const cursorRule = CFG.HIDE_CURSOR
+            ? '*, *::before, *::after { cursor: none !important; }'
             : '';
-            
+
         const dotDisplay = CFG.ENABLE_DOT ? '' : '.cc-dot { display: none !important; }';
         const ringDisplay = CFG.ENABLE_RING ? '' : '.cc-ring { display: none !important; }';
 
@@ -300,18 +299,62 @@
     renderCSS();
     (document.head || document.documentElement).appendChild(style);
 
-    // ---------- 光标元素 ----------
-    function spawn() {
-        const dot = document.createElement('div');
-        const ring = document.createElement('div');
-        dot.className = 'cc-dot';
-        ring.className = 'cc-ring';
-        document.body.append(ring, dot);
-        run(dot, ring);
-    }
-    document.body ? spawn() : document.addEventListener('DOMContentLoaded', spawn, { once: true });
+    // ---------- 光标元素 & SPA 守护 ----------
+    let dotEl = null, ringEl = null;
+    let runGeneration = 0; // 用于在 SPA 重建时让旧的 rAF/事件自动失效
 
-    function run(dot, ring) {
+    function spawn() {
+        // 如果元素仍然存活，无需操作
+        if (dotEl && dotEl.isConnected && ringEl && ringEl.isConnected) return;
+
+        // 递增 generation，使旧的 run() 循环自动退出
+        runGeneration++;
+
+        // 清理孤儿引用
+        if (dotEl && !dotEl.isConnected) dotEl = null;
+        if (ringEl && !ringEl.isConnected) ringEl = null;
+
+        dotEl = document.createElement('div');
+        ringEl = document.createElement('div');
+        dotEl.className = 'cc-dot';
+        ringEl.className = 'cc-ring';
+
+        // 挂载到 documentElement 而非 body，避开绝大多数 SPA 框架的 DOM 替换
+        document.documentElement.append(ringEl, dotEl);
+
+        run(dotEl, ringEl, runGeneration);
+    }
+
+    /**
+     * 启动轻量 DOM 守护
+     * 仅在光标元素断开连接时触发重建，回调内仅做 O(1) 布尔检查
+     */
+    function startGuardian() {
+        if (document.documentElement) spawn();
+        else document.addEventListener('DOMContentLoaded', spawn, { once: true });
+
+        const observer = new MutationObserver(() => {
+            // O(1) 检查，不做任何 DOM 查询
+            if ((dotEl && !dotEl.isConnected) || (ringEl && !ringEl.isConnected)) {
+                spawn();
+            }
+        });
+
+        const observe = () => {
+            observer.observe(document.documentElement, { childList: true, subtree: true });
+        };
+
+        if (document.documentElement) observe();
+        else document.addEventListener('DOMContentLoaded', observe, { once: true });
+    }
+
+    function run(dot, ring, gen) {
+        // 安全检查：若传入的元素无效或已被替换，恢复系统光标并退出
+        if (!dot || !ring || !dot.isConnected || !ring.isConnected) {
+            style.textContent = '';
+            return;
+        }
+
         const SEL_INTERACTIVE = 'a, button, [role="button"], [tabindex]:not([tabindex="-1"]), [onclick]';
         const SEL_TEXT = [
             'input:not([type="button"]):not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="reset"]):not([type="image"]):not([type="range"]):not([type="color"]):not([type="file"])',
@@ -335,6 +378,10 @@
 
         const dotCache = { x: NaN, y: NaN, s: NaN };
         const ringCache = { x: NaN, y: NaN, s: NaN };
+
+        // 使用 AbortController 统一管理事件生命周期，SPA 重建时一键解绑
+        const ac = new AbortController();
+        const sig = ac.signal;
 
         function parseBorderRadius(el) {
             const br = getComputedStyle(el).borderRadius || '0px';
@@ -378,22 +425,21 @@
             if (!rafId) { lastT = lastInput; rafId = requestAnimationFrame(tick); }
         }
 
+        // 所有事件绑定均通过 signal，generation 变更时自动清理
         document.addEventListener('visibilitychange', () => {
-            if (!document.hidden && rafId) {
-                lastT = performance.now();
-            }
-        });
+            if (!document.hidden && rafId) lastT = performance.now();
+        }, { signal: sig });
 
         addEventListener('pointermove', (e) => {
             if (e.pointerType === 'touch') return;
             mx = e.clientX; my = e.clientY;
             if (focusEl) { focusEl = null; focusRad = 0; }
             wake();
-        }, { passive: true });
+        }, { passive: true, signal: sig });
 
-        addEventListener('pointerdown', (e) => { if (e.pointerType === 'touch') return; pressed = true; wake(); });
-        addEventListener('pointerup', () => { pressed = false; wake(); });
-        addEventListener('pointercancel', () => { pressed = false; wake(); });
+        addEventListener('pointerdown', (e) => { if (e.pointerType === 'touch') return; pressed = true; wake(); }, { signal: sig });
+        addEventListener('pointerup', () => { pressed = false; wake(); }, { signal: sig });
+        addEventListener('pointercancel', () => { pressed = false; wake(); }, { signal: sig });
 
         addEventListener('wheel', (e) => {
             if (!CFG.SCROLL_ENABLED) return;
@@ -404,7 +450,7 @@
             sX = clamp(sX - clamp(dx, -80, 80), -CFG.SCROLL_MAX, CFG.SCROLL_MAX);
             sY = clamp(sY - clamp(dy, -80, 80), -CFG.SCROLL_MAX, CFG.SCROLL_MAX);
             wake();
-        }, { passive: true });
+        }, { passive: true, signal: sig });
 
         document.addEventListener('mouseover', (e) => {
             const tgt = e.target;
@@ -432,23 +478,24 @@
                 hoverEl = next;
                 hoverRad = rad;
             }
-        });
+        }, { signal: sig });
 
         document.addEventListener('focusin', (e) => {
             const tgt = e.target;
             if (!tgt || tgt.nodeType !== 1 || tgt.matches(SEL_TEXT) || !tgt.matches(SEL_INTERACTIVE)) return;
             const m = measure(tgt);
             if (m !== null) { focusEl = tgt; focusRad = m; wake(); }
-        });
+        }, { signal: sig });
+
         document.addEventListener('focusout', (e) => {
             if (focusEl === e.target) { focusEl = null; wake(); }
-        });
+        }, { signal: sig });
 
         const docEl = document.documentElement;
-        docEl.addEventListener('mouseenter', () => { inside = true; wake(); });
-        docEl.addEventListener('mouseleave', () => { inside = false; hide(); });
-        addEventListener('blur', hide);
-        addEventListener('focus', () => { if (inside) wake(); });
+        docEl.addEventListener('mouseenter', () => { inside = true; wake(); }, { signal: sig });
+        docEl.addEventListener('mouseleave', () => { inside = false; hide(); }, { signal: sig });
+        addEventListener('blur', hide, { signal: sig });
+        addEventListener('focus', () => { if (inside) wake(); }, { signal: sig });
 
         function setDotShape(bar) {
             if (dotIsBar === bar) return;
@@ -535,7 +582,7 @@
                                 result = { success: false, error: 'Invalid value type' };
                                 break;
                             }
-                            
+
                             commit();
                             store.write('overrides', overrides);
                             result = { success: true, key, value: overrides[key] };
@@ -564,8 +611,9 @@
                 }));
             }
         }
-        window.addEventListener('CURSORFX_REQUEST', handleWebRequest);
+        window.addEventListener('CURSORFX_REQUEST', handleWebRequest, { signal: sig });
         setTimeout(() => {
+            if (gen !== runGeneration) return; // 防止过期的 ready 事件
             window.dispatchEvent(new CustomEvent('CURSORFX_READY', {
                 detail: { version: WEB_API_VERSION, scriptVersion: SCRIPT_VERSION }
             }));
@@ -573,6 +621,9 @@
 
         // ---------- 动画循环 ----------
         function tick(t) {
+            // 【关键】generation 不匹配说明已被新 spawn 取代，静默退出
+            if (gen !== runGeneration) return;
+
             rafId = 0;
             const dt = clamp((t - lastT) / 1000, 0, 0.05) || 0.016;
             lastT = t;
@@ -632,7 +683,7 @@
                 const qrw = Math.round(rw * 10) / 10;
                 const qrh = Math.round(rh * 10) / 10;
                 const qrr = Math.round(rr * 10) / 10;
-                if (qrw !== lastW) { ring.style.width  = qrw + 'px'; lastW = qrw; }
+                if (qrw !== lastW) { ring.style.width = qrw + 'px'; lastW = qrw; }
                 if (qrh !== lastH) { ring.style.height = qrh + 'px'; lastH = qrh; }
                 if (qrr !== lastR) { ring.style.borderRadius = qrr + 'px'; lastR = qrr; }
             }
@@ -650,7 +701,7 @@
                 Math.round(rr * 10) / 10 === Math.round(tr * 10) / 10 &&
                 Math.abs(ringS - (pressed ? CFG.CLICK_SCALE : 1)) < 0.002 && Math.abs(ringV) < 0.01
             );
-            
+
             const dotSettled = !CFG.ENABLE_DOT || (
                 Math.abs(dotS - (pressed ? CFG.CLICK_SCALE : 1)) < 0.002 && Math.abs(dotV) < 0.01
             );
@@ -658,27 +709,37 @@
             const settled =
                 ringSettled && dotSettled &&
                 !el && sX === 0 && sY === 0;
-                
+
             if (settled && t - lastInput > CFG.IDLE_PAUSE_MS) return;
 
             rafId = requestAnimationFrame(tick);
         }
+
+        // 当 generation 被更新时（即 spawn 被重新调用），中止所有事件监听
+        // 这比手动 removeEventListener 更高效且不会遗漏
+        const origSpawn = spawn;
+        const checkGen = setInterval(() => {
+            if (gen !== runGeneration) {
+                ac.abort();
+                clearInterval(checkGen);
+                if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
+            }
+        }, 2000); // 低频检查，仅作为 AbortController 的补充安全网
     }
+
+    // 启动守护进程
+    startGuardian();
 
     // ==================== 设置面板 ====================
     let panelHost = null, panelOpen = false;
     let saveTimeoutId = 0;
 
     const decimals = f => String(f.step).includes('.') ? String(f.step).split('.')[1].length : 0;
-    const fmt = (v, f) => f.type === 'bool' 
-        ? (v ? 'ON' : 'OFF') 
+    const fmt = (v, f) => f.type === 'bool'
+        ? (v ? 'ON' : 'OFF')
         : (+v).toFixed(decimals(f)) + (f.unit ? ' ' + f.unit : '');
     const curVal = f => (f.key in overrides ? overrides[f.key] : DEFAULTS[f.key]);
 
-    /**
-     * 检查某个字段当前是否应该被禁用
-     * 优先级：系统减少动态效果 > 父级布尔依赖
-     */
     function isFieldDisabled(f) {
         if (RM_KEYS && RM_KEYS.has(f.key)) return true;
         if (f.deps) {
@@ -698,12 +759,12 @@
                 html += '<section><h3>' + t('groups.' + f.g) + '</h3>';
                 lastG = f.g;
             }
-            
+
             const v = curVal(f);
             const disabled = isFieldDisabled(f);
             const disabledAttr = disabled ? ' disabled' : '';
             const disabledStyle = disabled ? ' style="opacity:.4;pointer-events:none"' : '';
-            
+
             if (f.type === 'bool') {
                 html +=
                     '<label class="row toggle-row"' + disabledStyle + '>' +
@@ -724,17 +785,14 @@
         return html + '</section>';
     }
 
-    /**
-     * 实时更新面板内所有字段的禁用状态（不重建 DOM）
-     */
     function updatePanelDisabledState(sh) {
         for (const f of FIELDS) {
             const inp = sh.querySelector(`input[data-k="${f.key}"]`);
             if (!inp) continue;
-            
+
             const disabled = isFieldDisabled(f);
             const row = inp.closest('.row');
-            
+
             inp.disabled = disabled;
             if (row) {
                 row.style.opacity = disabled ? '.4' : '';
@@ -862,7 +920,6 @@
             '</footer>' +
             '</div>';
 
-        // ---------- 面板内事件 ----------
         const body = sh.querySelector('.body');
         const saved = sh.querySelector('.saved');
         const langSelect = sh.querySelector('#lang-selector');
@@ -886,7 +943,7 @@
             const k = e.target.dataset && e.target.dataset.k;
             if (!k) return;
             const f = FMAP[k];
-            
+
             if (f.type === 'bool') {
                 const v = e.target.checked;
                 overrides[k] = v;
@@ -923,7 +980,7 @@
             } else if (b.dataset.act === 'reset') {
                 for (const k in overrides) delete overrides[k];
                 store.erase('overrides');
-                
+
                 body.querySelectorAll('input[data-k]').forEach(inp => {
                     const f = FMAP[inp.dataset.k];
                     const v = DEFAULTS[f.key];
@@ -936,7 +993,7 @@
                         inp.closest('.row').querySelector('.val').textContent = fmt(v, f);
                     }
                 });
-                
+
                 commit();
                 updatePanelDisabledState(sh);
                 flash('buttons.restored');
