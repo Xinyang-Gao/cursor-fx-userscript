@@ -7,6 +7,7 @@
 // @description:zh-CN  隐藏系统指针，使用圆点 + 圆环自定义光标：延迟跟随、悬停贴合、文本竖条、点击弹性缩放、滚动拖尾。transform 合成层定位，帧率无关平滑，空闲自动暂停。点击篡改猴菜单中的「⚙ 光标设置」打开设置面板，实时调节、自动保存。
 // @author       Xinyang-Gao
 // @license      MIT
+// @icon         https://raw.githubusercontent.com/Xinyang-Gao/cursor-fx-userscript/main/assets/logo.png
 // @match        *://*/*
 // @run-at       document-start
 // @grant        GM_registerMenuCommand
