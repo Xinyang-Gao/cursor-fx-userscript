@@ -2,7 +2,7 @@
 // @name         Cursor FX
 // @name:zh-CN   自定义鼠标光标特效
 // @namespace    https://github.com/Xinyang-Gao/cursor-fx-userscript
-// @version      2.6.0
+// @version      2.7.0
 // @description  Smooth custom cursor: delayed ring follow, hover fitting, text caret mode, click spring scale, scroll trail. GPU-composited, frame-rate independent, auto-pauses when idle. Settings panel via the Tampermonkey menu.
 // @description:zh-CN  隐藏系统指针，使用圆点 + 圆环自定义光标：延迟跟随、悬停贴合、文本竖条、点击弹性缩放、滚动拖尾。transform 合成层定位，帧率无关平滑，空闲自动暂停。点击篡改猴菜单中的「⚙ 光标设置」打开设置面板，实时调节、自动保存。
 // @author       Xinyang-Gao
@@ -25,8 +25,8 @@
 (function () {
     'use strict';
 
-    const SCRIPT_VERSION = '2.6.0';
-    const WEB_API_VERSION = '1.2';
+    const SCRIPT_VERSION = '2.7.0';
+    const WEB_API_VERSION = '1.3';
 
     // ==================== I18N ====================
     const LANGUAGES = {
@@ -153,7 +153,7 @@
         FOLLOW_SPEED: 16,
         FIT_SPEED: 26,
         SHAPE_SPEED: 18,
-        SCROLL_ENABLED: false,
+        SCROLL_ENABLED: true,
         SCROLL_MAX: 30,
         SCROLL_DECAY: 7,
         CLICK_SCALE: 0.78,
@@ -193,30 +193,31 @@
     };
 
     // ---------- 字段定义与依赖关系 ----------
+    // deps: 该字段依赖哪些布尔开关，若任一为 false 则禁用
     const FIELDS = [
         { g: 'appearance', key: 'ENABLE_DOT',     label: 'ENABLE_DOT',     type: 'bool' },
         { g: 'appearance', key: 'ENABLE_RING',    label: 'ENABLE_RING',    type: 'bool' },
         { g: 'other',      key: 'HIDE_CURSOR',    label: 'HIDE_CURSOR',    type: 'bool' },
         
-        { g: 'appearance', key: 'DOT_SIZE',       label: 'DOT_SIZE',       min: 2,   max: 24,   step: 1,    unit: 'px' },
-        { g: 'appearance', key: 'RING_SIZE',      label: 'RING_SIZE',      min: 16,  max: 96,   step: 2,    unit: 'px' },
-        { g: 'appearance', key: 'RING_BORDER',    label: 'RING_BORDER',    min: 0.5, max: 6,    step: 0.5,  unit: 'px' },
-        { g: 'appearance', key: 'RING_ALPHA',     label: 'RING_ALPHA',     min: 0.1, max: 1,    step: 0.05, unit: '' },
-        { g: 'fit',        key: 'FIT_PADDING',    label: 'FIT_PADDING',    min: 0,   max: 24,   step: 1,    unit: 'px' },
-        { g: 'fit',        key: 'MAX_FIT_SIZE',   label: 'MAX_FIT_SIZE',   min: 80,  max: 480,  step: 10,   unit: 'px' },
+        { g: 'appearance', key: 'DOT_SIZE',       label: 'DOT_SIZE',       min: 2,   max: 24,   step: 1,    unit: 'px', deps: ['ENABLE_DOT'] },
+        { g: 'appearance', key: 'RING_SIZE',      label: 'RING_SIZE',      min: 16,  max: 96,   step: 2,    unit: 'px', deps: ['ENABLE_RING'] },
+        { g: 'appearance', key: 'RING_BORDER',    label: 'RING_BORDER',    min: 0.5, max: 6,    step: 0.5,  unit: 'px', deps: ['ENABLE_RING'] },
+        { g: 'appearance', key: 'RING_ALPHA',     label: 'RING_ALPHA',     min: 0.1, max: 1,    step: 0.05, unit: '',    deps: ['ENABLE_RING'] },
+        { g: 'fit',        key: 'FIT_PADDING',    label: 'FIT_PADDING',    min: 0,   max: 24,   step: 1,    unit: 'px', deps: ['ENABLE_RING'] },
+        { g: 'fit',        key: 'MAX_FIT_SIZE',   label: 'MAX_FIT_SIZE',   min: 80,  max: 480,  step: 10,   unit: 'px', deps: ['ENABLE_RING'] },
         { g: 'follow',     key: 'FOLLOW_SPEED',   label: 'FOLLOW_SPEED',   min: 2,   max: 40,   step: 1,    unit: '' },
-        { g: 'follow',     key: 'FIT_SPEED',      label: 'FIT_SPEED',      min: 4,   max: 80,   step: 1,    unit: '' },
-        { g: 'follow',     key: 'SHAPE_SPEED',    label: 'SHAPE_SPEED',    min: 4,   max: 80,   step: 1,    unit: '' },
-        { g: 'click',      key: 'CLICK_SCALE',    label: 'CLICK_SCALE',    min: 0.4, max: 1,    step: 0.02, unit: '' },
-        { g: 'click',      key: 'SPRING_K',       label: 'SPRING_K',       min: 100, max: 1200, step: 20,   unit: '' },
-        { g: 'click',      key: 'SPRING_DAMP',    label: 'SPRING_DAMP',    min: 5,   max: 40,   step: 1,    unit: '' },
+        { g: 'follow',     key: 'FIT_SPEED',      label: 'FIT_SPEED',      min: 4,   max: 80,   step: 1,    unit: '',    deps: ['ENABLE_RING'] },
+        { g: 'follow',     key: 'SHAPE_SPEED',    label: 'SHAPE_SPEED',    min: 4,   max: 80,   step: 1,    unit: '',    deps: ['ENABLE_RING'] },
+        { g: 'click',      key: 'CLICK_SCALE',    label: 'CLICK_SCALE',    min: 0.4, max: 1,    step: 0.02, unit: '',    deps: ['ENABLE_DOT', 'ENABLE_RING'] },
+        { g: 'click',      key: 'SPRING_K',       label: 'SPRING_K',       min: 100, max: 1200, step: 20,   unit: '',    deps: ['ENABLE_DOT', 'ENABLE_RING'] },
+        { g: 'click',      key: 'SPRING_DAMP',    label: 'SPRING_DAMP',    min: 5,   max: 40,   step: 1,    unit: '',    deps: ['ENABLE_DOT', 'ENABLE_RING'] },
         { g: 'scroll',     key: 'SCROLL_ENABLED', label: 'SCROLL_ENABLED', type: 'bool' },
         { g: 'scroll',     key: 'SCROLL_MAX',     label: 'SCROLL_MAX',     min: 0,   max: 80,   step: 2,    unit: 'px', deps: ['SCROLL_ENABLED'] },
         { g: 'scroll',     key: 'SCROLL_DECAY',   label: 'SCROLL_DECAY',   min: 1,   max: 20,   step: 0.5,  unit: '',    deps: ['SCROLL_ENABLED'] },
-        { g: 'text',       key: 'TEXT_BAR_W',     label: 'TEXT_BAR_W',     min: 1,   max: 6,    step: 0.5,  unit: 'px' },
-        { g: 'text',       key: 'TEXT_BAR_H',     label: 'TEXT_BAR_H',     min: 12,  max: 40,   step: 1,    unit: 'px' },
-        { g: 'text',       key: 'TEXT_RING_SIZE', label: 'TEXT_RING_SIZE', min: 12,  max: 64,   step: 2,    unit: 'px' },
-        { g: 'text',       key: 'TEXT_RING_ALPHA',label: 'TEXT_RING_ALPHA',min: 0.1, max: 1,    step: 0.05, unit: '' },
+        { g: 'text',       key: 'TEXT_BAR_W',     label: 'TEXT_BAR_W',     min: 1,   max: 6,    step: 0.5,  unit: 'px', deps: ['ENABLE_DOT'] },
+        { g: 'text',       key: 'TEXT_BAR_H',     label: 'TEXT_BAR_H',     min: 12,  max: 40,   step: 1,    unit: 'px', deps: ['ENABLE_DOT'] },
+        { g: 'text',       key: 'TEXT_RING_SIZE', label: 'TEXT_RING_SIZE', min: 12,  max: 64,   step: 2,    unit: 'px', deps: ['ENABLE_RING'] },
+        { g: 'text',       key: 'TEXT_RING_ALPHA',label: 'TEXT_RING_ALPHA',min: 0.1, max: 1,    step: 0.05, unit: '',    deps: ['ENABLE_RING'] },
         { g: 'other',      key: 'IDLE_PAUSE_MS',  label: 'IDLE_PAUSE_MS',  min: 500, max: 10000,step: 250,  unit: 'ms' },
     ];
     const FMAP = Object.create(null);
@@ -676,8 +677,7 @@
 
     /**
      * 检查某个字段当前是否应该被禁用
-     * 1. 系统减少动态效果 (RM)
-     * 2. 依赖的父级布尔值为 false
+     * 优先级：系统减少动态效果 > 父级布尔依赖
      */
     function isFieldDisabled(f) {
         if (RM_KEYS && RM_KEYS.has(f.key)) return true;
@@ -725,7 +725,7 @@
     }
 
     /**
-     * 更新面板内所有字段的禁用状态（不重建 DOM）
+     * 实时更新面板内所有字段的禁用状态（不重建 DOM）
      */
     function updatePanelDisabledState(sh) {
         for (const f of FIELDS) {
@@ -790,7 +790,6 @@
             '.lab{font-size:12px;color:#b7bac3;white-space:nowrap}' +
             '.val{font:500 11px/1 ui-monospace,"SF Mono",Menlo,Consolas,monospace;color:#dfe1e6;' +
             'text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}' +
-            /* Range Input Styles */
             'input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:26px;' +
             'background:transparent;cursor:none;margin:0}' +
             'input[type=range]::-webkit-slider-runnable-track{height:3px;border-radius:2px;' +
@@ -805,7 +804,6 @@
             'background:#fff;box-shadow:0 1px 5px rgba(0,0,0,.55)}' +
             'input[type=range]:focus-visible{outline:2px solid rgba(255,255,255,.45);outline-offset:2px;border-radius:6px}' +
             'input[type=range]:disabled{opacity:.5;cursor:not-allowed}' +
-            /* Checkbox Toggle Styles */
             'input[type=checkbox]{-webkit-appearance:none;appearance:none;width:36px;height:20px;' +
             'background:transparent;border:1.5px solid rgba(255,255,255,.3);border-radius:10px;' +
             'position:relative;cursor:none;transition:all .2s ease;outline:none;vertical-align:middle;flex-shrink:0}' +
@@ -821,8 +819,6 @@
             'input[type=checkbox]:checked:active::after{left:16px;width:14px}' +
             'input[type=checkbox]:focus-visible{box-shadow:0 0 0 2px rgba(255,255,255,.45)}' +
             'input[type=checkbox]:disabled{opacity:.5;cursor:not-allowed}' +
-            
-            /* Footer & Lang */
             '.lang-row{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;' +
             'border-top:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.02)}' +
             '.lang-label{font-size:12px;color:#b7bac3}' +
@@ -895,7 +891,6 @@
                 const v = e.target.checked;
                 overrides[k] = v;
                 commit();
-                // 当布尔值改变时，更新依赖它的子字段的禁用状态
                 updatePanelDisabledState(sh);
                 scheduleSave();
             } else {
