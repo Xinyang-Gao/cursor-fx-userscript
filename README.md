@@ -83,6 +83,17 @@ Once installed, the script runs automatically on **every page** (`@match *://*/*
 
 ## Settings Reference
 
+The following boolean toggles control core features (all default to **ON**):
+
+| Key | Default | Description |
+|---|---|---|
+| `ENABLE_DOT` | ON | Show / hide the dot |
+| `ENABLE_RING` | ON | Show / hide the ring |
+| `HIDE_CURSOR` | ON | Hide the system cursor |
+| `SCROLL_ENABLED` | ON | Enable scroll trail feedback |
+
+The remaining numeric parameters are grouped below:
+
 | Group | Key | Default | Range | Description |
 |---|---|---|---|---|
 | Appearance | `DOT_SIZE` | 8 px | 2 – 24 | Dot diameter |
@@ -257,6 +268,17 @@ Bug reports and feature requests are welcome via [Issues](https://github.com/Xin
 4. 按 **Esc** 或点击面板外区域关闭。
 
 ## 设置项一览
+
+以下布尔开关控制核心功能（均默认为 **开启**）：
+
+| 键名 | 默认值 | 说明 |
+|---|---|---|
+| `ENABLE_DOT` | ON | 显示 / 隐藏圆点 |
+| `ENABLE_RING` | ON | 显示 / 隐藏圆环 |
+| `HIDE_CURSOR` | ON | 隐藏系统光标 |
+| `SCROLL_ENABLED` | ON | 启用滚动反馈 |
+
+其余数值参数分组如下：
 
 | 分组 | 键名 | 默认值 | 范围 | 说明 |
 |---|---|---|---|---|
