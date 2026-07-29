@@ -2,7 +2,7 @@
 // @name         Cursor FX
 // @name:zh-CN   自定义鼠标光标特效
 // @namespace    https://github.com/Xinyang-Gao/cursor-fx-userscript
-// @version      2.4.0
+// @version      2.4.1
 // @description  Smooth custom cursor: delayed ring follow, hover fitting, text caret mode, click spring scale, scroll trail. GPU-composited, frame-rate independent, auto-pauses when idle. Settings panel via the Tampermonkey menu.
 // @description:zh-CN  隐藏系统指针，使用圆点 + 圆环自定义光标：延迟跟随、悬停贴合、文本竖条、点击弹性缩放、滚动拖尾。transform 合成层定位，帧率无关平滑，空闲自动暂停。点击篡改猴菜单中的「⚙ 光标设置」打开设置面板，实时调节、自动保存。
 // @author       Xinyang-Gao
@@ -24,7 +24,7 @@
 (function () {
     'use strict';
 
-    const SCRIPT_VERSION = '2.4.0';
+    const SCRIPT_VERSION = '2.4.1';
     const WEB_API_VERSION = '1.0';
 
     // ==================== I18N ====================
@@ -314,26 +314,29 @@
         const dotCache = { x: NaN, y: NaN, s: NaN };
         const ringCache = { x: NaN, y: NaN, s: NaN };
 
-        // [FIX #3] 解析复合 borderRadius，取最大值
+        // [FIX #3] 解析复合 borderRadius，取最大值 ———— 重写以正确处理混合单位
         function parseBorderRadius(el) {
             const br = getComputedStyle(el).borderRadius || '0px';
-            if (br.indexOf('%') > -1) {
-                const r = el.getBoundingClientRect();
-                return parseFloat(br) / 100 * Math.min(r.width, r.height);
-            }
-            // 复合值如 "10px 20px 30px 40px"，取最大值
+            const rect = el.getBoundingClientRect();
             const parts = br.split(/\s+/);
             let max = 0;
             for (const p of parts) {
                 const v = parseFloat(p);
-                if (v > max) max = v;
+                if (!isFinite(v)) continue;
+                if (p.endsWith('%')) {
+                    max = Math.max(max, v / 100 * Math.min(rect.width, rect.height));
+                } else {
+                    max = Math.max(max, v);
+                }
             }
             return max;
         }
 
+        // [FIX #1 + #2] 增加零尺寸守卫，并将 && 改为 ||
         function measure(el) {
             const r = el.getBoundingClientRect();
-            if (r.width > CFG.MAX_FIT_SIZE && r.height > CFG.MAX_FIT_SIZE) return null;
+            if (r.width === 0 && r.height === 0) return null;
+            if (r.width > CFG.MAX_FIT_SIZE || r.height > CFG.MAX_FIT_SIZE) return null;
             return parseBorderRadius(el);
         }
 
@@ -365,7 +368,7 @@
         addEventListener('pointermove', (e) => {
             if (e.pointerType === 'touch') return;
             mx = e.clientX; my = e.clientY;
-            if (focusEl) focusEl = null;
+            if (focusEl) { focusEl = null; focusRad = 0; }  // [FIX #9] 一并清零
             wake();
         }, { passive: true });
 
@@ -374,11 +377,12 @@
         addEventListener('pointercancel', () => { pressed = false; wake(); });
 
         // [FIX #4] 改进 deltaMode===2 的处理
+        // [FIX #6] 增加 textEl 检查，文本框内滚动不产生拖尾
         addEventListener('wheel', (e) => {
-            if (hoverEl || focusEl) return;
+            if (hoverEl || focusEl || textEl) return;
             let dx = e.deltaX, dy = e.deltaY;
-            if (e.deltaMode === 1) { dx *= 16; dy *= 16; }       // 行 → px
-            else if (e.deltaMode === 2) { dx *= 120; dy *= 120; } // 页 → 近似 px（而非 innerHeight）
+            if (e.deltaMode === 1) { dx *= 16; dy *= 16; }
+            else if (e.deltaMode === 2) { dx *= 120; dy *= 120; }
             sX = clamp(sX - clamp(dx, -80, 80), -CFG.SCROLL_MAX, CFG.SCROLL_MAX);
             sY = clamp(sY - clamp(dy, -80, 80), -CFG.SCROLL_MAX, CFG.SCROLL_MAX);
             wake();
@@ -446,7 +450,6 @@
 
         // [OPT #9] 数值级缓存，减少字符串拼接和 GC
         function setT(el, x, y, s, cache) {
-            // 精度截断到 0.01px / 0.001 scale，避免无意义更新
             const qx = Math.round(x * 100) / 100;
             const qy = Math.round(y * 100) / 100;
             const qs = Math.round(s * 1000) / 1000;
@@ -459,12 +462,23 @@
         setT(ring, rx, ry, 1, ringCache);
 
         api = {
+            // [FIX #8] 刷新时临时禁用 transition，避免 CSS 规则变化触发过渡动画
             refresh() {
+                const oldDotTrans = dot.style.transition;
+                const oldRingTrans = ring.style.transition;
+                dot.style.transition = 'none';
+                ring.style.transition = 'none';
+
                 const b = dotIsBar; dotIsBar = !b; setDotShape(b);
                 const d = ringDim; ringDim = !d; setRingAlpha(d);
                 lastW = lastH = lastR = -1;
                 dotCache.x = dotCache.y = dotCache.s = NaN;
                 ringCache.x = ringCache.y = ringCache.s = NaN;
+
+                requestAnimationFrame(() => {
+                    dot.style.transition = oldDotTrans || '';
+                    ring.style.transition = oldRingTrans || '';
+                });
                 wake();
             }
         };
@@ -493,7 +507,8 @@
                     }
                     case 'setSetting': {
                         const { key, value } = payload || {};
-                        if (key && key in FMAP) {
+                        // [FIX #3] 增加类型与有限数校验
+                        if (key && key in FMAP && typeof value === 'number' && isFinite(value)) {
                             const f = FMAP[key];
                             const clamped = clamp(value, f.min, f.max);
                             overrides[key] = clamped;
@@ -501,7 +516,7 @@
                             store.write('overrides', overrides);
                             result = { success: true, key, value: clamped };
                         } else {
-                            result = { success: false, error: 'Invalid key' };
+                            result = { success: false, error: 'Invalid key or value' };
                         }
                         break;
                     }
@@ -557,11 +572,12 @@
             tw = textEl ? CFG.TEXT_RING_SIZE : CFG.RING_SIZE;
             th = tw; tr = tw / 2;
 
+            // [FIX #1 + #2] 增强贴合检测：零尺寸或任一维度超限则清除
             if (el) {
                 const r = el.getBoundingClientRect();
-                if (r.width > CFG.MAX_FIT_SIZE && r.height > CFG.MAX_FIT_SIZE) {
-                    if (hoverEl === el) hoverEl = null;
-                    if (focusEl === el) focusEl = null;
+                if ((r.width === 0 && r.height === 0) || r.width > CFG.MAX_FIT_SIZE || r.height > CFG.MAX_FIT_SIZE) {
+                    if (hoverEl === el) { hoverEl = null; hoverRad = 0; }
+                    if (focusEl === el) { focusEl = null; focusRad = 0; }
                 } else {
                     tx = r.left + r.width / 2;
                     ty = r.top + r.height / 2;
@@ -591,12 +607,19 @@
 
             setT(dot, mx, my, dotS, dotCache);
             setT(ring, rx, ry, ringS, ringCache);
-            if (rw !== lastW) { ring.style.width = rw + 'px'; lastW = rw; }
-            if (rh !== lastH) { ring.style.height = rh + 'px'; lastH = rh; }
-            if (rr !== lastR) { ring.style.borderRadius = rr + 'px'; lastR = rr; }
+
+            // [FIX #5] 截断到 0.1px 精度，减少无意义 DOM 写入
+            const qrw = Math.round(rw * 10) / 10;
+            const qrh = Math.round(rh * 10) / 10;
+            const qrr = Math.round(rr * 10) / 10;
+            if (qrw !== lastW) { ring.style.width  = qrw + 'px'; lastW = qrw; }
+            if (qrh !== lastH) { ring.style.height = qrh + 'px'; lastH = qrh; }
+            if (qrr !== lastR) { ring.style.borderRadius = qrr + 'px'; lastR = qrr; }
 
             const settled =
-                rw === tw && rh === th && rr === tr &&
+                qrw === Math.round(tw * 10) / 10 &&
+                qrh === Math.round(th * 10) / 10 &&
+                qrr === Math.round(tr * 10) / 10 &&
                 !el && sX === 0 && sY === 0 &&
                 Math.abs(dotS - sT) < 0.002 && Math.abs(dotV) < 0.01 &&
                 Math.abs(ringS - sT) < 0.002 && Math.abs(ringV) < 0.01;
@@ -608,6 +631,8 @@
 
     // ==================== 设置面板 ====================
     let panelHost = null, panelOpen = false;
+    // [FIX #7] 将保存定时器句柄提升为模块级，以便 closePanel 清除
+    let saveTimeoutId = 0;
 
     const decimals = f => String(f.step).includes('.') ? String(f.step).split('.')[1].length : 0;
     const fmt = (v, f) => (+v).toFixed(decimals(f)) + (f.unit ? ' ' + f.unit : '');
@@ -623,7 +648,6 @@
             }
             const v = curVal(f);
             const p = ((v - f.min) / (f.max - f.min) * 100).toFixed(1);
-            // [FIX #11] RM 模式下禁用被覆盖的字段
             const disabled = RM_KEYS && RM_KEYS.has(f.key) ? ' disabled' : '';
             const disabledStyle = disabled ? ' style="opacity:.4;pointer-events:none"' : '';
             html +=
@@ -742,7 +766,7 @@
         const body = sh.querySelector('.body');
         const saved = sh.querySelector('.saved');
         const langSelect = sh.querySelector('#lang-selector');
-        let saveT = 0, flashT = 0;
+        let flashT = 0;
 
         function flash(msgKey) {
             saved.textContent = t(msgKey);
@@ -751,8 +775,8 @@
             flashT = setTimeout(() => saved.classList.remove('on'), 1100);
         }
         function scheduleSave() {
-            clearTimeout(saveT);
-            saveT = setTimeout(() => {
+            clearTimeout(saveTimeoutId);
+            saveTimeoutId = setTimeout(() => {
                 store.write('overrides', overrides);
                 flash('buttons.saved');
             }, 350);
@@ -816,8 +840,10 @@
         p.classList.add('pop');
     }
 
+    // [FIX #7] closePanel 中清除保存定时器
     function closePanel() {
         panelOpen = false;
+        clearTimeout(saveTimeoutId);
         if (panelHost) {
             panelHost.remove();
             panelHost = null;
