@@ -2,7 +2,7 @@
 // @name         Cursor FX
 // @name:zh-CN   自定义鼠标光标特效
 // @namespace    https://github.com/Xinyang-Gao/cursor-fx-userscript
-// @version      2.4.1
+// @version      2.5.0
 // @description  Smooth custom cursor: delayed ring follow, hover fitting, text caret mode, click spring scale, scroll trail. GPU-composited, frame-rate independent, auto-pauses when idle. Settings panel via the Tampermonkey menu.
 // @description:zh-CN  隐藏系统指针，使用圆点 + 圆环自定义光标：延迟跟随、悬停贴合、文本竖条、点击弹性缩放、滚动拖尾。transform 合成层定位，帧率无关平滑，空闲自动暂停。点击篡改猴菜单中的「⚙ 光标设置」打开设置面板，实时调节、自动保存。
 // @author       Xinyang-Gao
@@ -25,8 +25,8 @@
 (function () {
     'use strict';
 
-    const SCRIPT_VERSION = '2.4.1';
-    const WEB_API_VERSION = '1.0';
+    const SCRIPT_VERSION = '2.5.0';
+    const WEB_API_VERSION = '1.1';
 
     // ==================== I18N ====================
     const LANGUAGES = {
@@ -42,6 +42,7 @@
                     click: '点击', scroll: '滚动', text: '文本', other: '其他'
                 },
                 labels: {
+                    ENABLE_DOT: '启用圆点', ENABLE_RING: '启用圆环', HIDE_CURSOR: '隐藏系统鼠标',
                     DOT_SIZE: '圆点大小', RING_SIZE: '圆环大小', RING_BORDER: '圆环粗细',
                     RING_ALPHA: '圆环透明度', FIT_PADDING: '贴合留白', MAX_FIT_SIZE: '最大贴合尺寸',
                     FOLLOW_SPEED: '跟随速度', FIT_SPEED: '吸附速度', SHAPE_SPEED: '形变速度',
@@ -73,6 +74,7 @@
                     click: 'Click', scroll: 'Scroll', text: 'Text', other: 'Other'
                 },
                 labels: {
+                    ENABLE_DOT: 'Enable Dot', ENABLE_RING: 'Enable Ring', HIDE_CURSOR: 'Hide System Cursor',
                     DOT_SIZE: 'Dot Size', RING_SIZE: 'Ring Size', RING_BORDER: 'Ring Border',
                     RING_ALPHA: 'Ring Opacity', FIT_PADDING: 'Fit Padding', MAX_FIT_SIZE: 'Max Fit Size',
                     FOLLOW_SPEED: 'Follow Speed', FIT_SPEED: 'Fit Speed', SHAPE_SPEED: 'Shape Speed',
@@ -94,7 +96,6 @@
         }
     };
 
-    // [FIX #10] 统一存储 key 前缀
     const STORE_PREFIX = 'CursorFX.';
 
     function getInitialLang() {
@@ -135,6 +136,11 @@
 
     // ==================== 可调参数 ====================
     const DEFAULTS = {
+        // [NEW] 布尔开关
+        ENABLE_DOT: true,
+        ENABLE_RING: true,
+        HIDE_CURSOR: true,
+        
         DOT_SIZE: 8,
         RING_SIZE: 40,
         RING_BORDER: 1.5,
@@ -162,7 +168,6 @@
     if (matchMedia('(pointer: coarse)').matches) return;
 
     // ---------- 设置存储 ----------
-    // [FIX #10] 统一使用 STORE_PREFIX
     const store = {
         read(k, fb) {
             try {
@@ -189,6 +194,11 @@
 
     // ---------- 字段定义 ----------
     const FIELDS = [
+        // [NEW] 开关组
+        { g: 'appearance', key: 'ENABLE_DOT',     label: 'ENABLE_DOT',     type: 'bool' },
+        { g: 'appearance', key: 'ENABLE_RING',    label: 'ENABLE_RING',    type: 'bool' },
+        { g: 'other',      key: 'HIDE_CURSOR',    label: 'HIDE_CURSOR',    type: 'bool' },
+        
         { g: 'appearance', key: 'DOT_SIZE',       label: 'DOT_SIZE',       min: 2,   max: 24,   step: 1,    unit: 'px' },
         { g: 'appearance', key: 'RING_SIZE',      label: 'RING_SIZE',      min: 16,  max: 96,   step: 2,    unit: 'px' },
         { g: 'appearance', key: 'RING_BORDER',    label: 'RING_BORDER',    min: 0.5, max: 6,    step: 0.5,  unit: 'px' },
@@ -217,12 +227,16 @@
         const raw = store.read('overrides', {});
         for (const f of FIELDS) {
             const v = raw[f.key];
-            if (typeof v === 'number' && isFinite(v)) overrides[f.key] = clamp(v, f.min, f.max);
+            // [MOD] 支持布尔值读取校验
+            if (f.type === 'bool') {
+                if (typeof v === 'boolean') overrides[f.key] = v;
+            } else if (typeof v === 'number' && isFinite(v)) {
+                overrides[f.key] = clamp(v, f.min, f.max);
+            }
         }
     }
 
     const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
-    // [FIX #11] 记录被 RM 覆盖的 key，用于 UI 禁用
     const RM_KEYS = RM
         ? new Set(['FOLLOW_SPEED', 'FIT_SPEED', 'SHAPE_SPEED', 'SCROLL_MAX', 'SPRING_K', 'SPRING_DAMP'])
         : null;
@@ -234,8 +248,17 @@
     // ---------- 样式 ----------
     const style = document.createElement('style');
     function renderCSS() {
+        // [MOD] 根据 HIDE_CURSOR 动态决定是否隐藏原生鼠标
+        const cursorRule = CFG.HIDE_CURSOR 
+            ? '*, *::before, *::after { cursor: none !important; }' 
+            : '';
+            
+        // [MOD] 根据开关决定组件可见性基础类
+        const dotDisplay = CFG.ENABLE_DOT ? '' : '.cc-dot { display: none !important; }';
+        const ringDisplay = CFG.ENABLE_RING ? '' : '.cc-ring { display: none !important; }';
+
         style.textContent = `
-            *, *::before, *::after { cursor: none !important; }
+            ${cursorRule}
             .cc-dot, .cc-ring {
                 position: fixed; left: 0; top: 0;
                 pointer-events: none;
@@ -256,6 +279,8 @@
                 transition: opacity .3s ease, border-color .25s ease;
             }
             .cc-live { opacity: 1; }
+            ${dotDisplay}
+            ${ringDisplay}
         `;
     }
 
@@ -311,11 +336,9 @@
         let lastInput = 0, lastT = 0, rafId = 0;
         let shown = false, inside = true;
 
-        // [OPT #9] 数值缓存代替字符串比较
         const dotCache = { x: NaN, y: NaN, s: NaN };
         const ringCache = { x: NaN, y: NaN, s: NaN };
 
-        // [FIX #3] 解析复合 borderRadius，取最大值 ———— 重写以正确处理混合单位
         function parseBorderRadius(el) {
             const br = getComputedStyle(el).borderRadius || '0px';
             const rect = el.getBoundingClientRect();
@@ -333,7 +356,6 @@
             return max;
         }
 
-        // [FIX #1 + #2] 增加零尺寸守卫，并将 && 改为 ||
         function measure(el) {
             const r = el.getBoundingClientRect();
             if (r.width === 0 && r.height === 0) return null;
@@ -359,7 +381,6 @@
             if (!rafId) { lastT = lastInput; rafId = requestAnimationFrame(tick); }
         }
 
-        // [FIX #12] 页面可见性变化时重置 lastT，避免回来时跳变
         document.addEventListener('visibilitychange', () => {
             if (!document.hidden && rafId) {
                 lastT = performance.now();
@@ -369,7 +390,7 @@
         addEventListener('pointermove', (e) => {
             if (e.pointerType === 'touch') return;
             mx = e.clientX; my = e.clientY;
-            if (focusEl) { focusEl = null; focusRad = 0; }  // [FIX #9] 一并清零
+            if (focusEl) { focusEl = null; focusRad = 0; }
             wake();
         }, { passive: true });
 
@@ -377,8 +398,6 @@
         addEventListener('pointerup', () => { pressed = false; wake(); });
         addEventListener('pointercancel', () => { pressed = false; wake(); });
 
-        // [FIX #4] 改进 deltaMode===2 的处理
-        // [FIX #6] 增加 textEl 检查，文本框内滚动不产生拖尾
         addEventListener('wheel', (e) => {
             if (hoverEl || focusEl || textEl) return;
             let dx = e.deltaX, dy = e.deltaY;
@@ -389,12 +408,10 @@
             wake();
         }, { passive: true });
 
-        // [FIX #5 + OPT #7] mouseover 中增加 isConnected 检查 + 合并 closest 调用
         document.addEventListener('mouseover', (e) => {
             const tgt = e.target;
             if (!tgt || tgt.nodeType !== 1) return;
 
-            // 文本检测
             const txt = tgt.closest(SEL_TEXT) || null;
             if (txt !== textEl) {
                 textEl = txt;
@@ -402,7 +419,6 @@
                 setRingAlpha(!!txt);
             }
 
-            // 交互元素检测 — 先验证旧引用有效性
             if (hoverEl && !hoverEl.isConnected) {
                 hoverEl = null;
                 hoverRad = 0;
@@ -449,7 +465,6 @@
             ring.style.setProperty('--ccA', dim ? CFG.TEXT_RING_ALPHA : CFG.RING_ALPHA);
         }
 
-        // [OPT #9] 数值级缓存，减少字符串拼接和 GC
         function setT(el, x, y, s, cache) {
             const qx = Math.round(x * 100) / 100;
             const qy = Math.round(y * 100) / 100;
@@ -463,7 +478,6 @@
         setT(ring, rx, ry, 1, ringCache);
 
         api = {
-            // [FIX #8] 刷新时临时禁用 transition，避免 CSS 规则变化触发过渡动画
             refresh() {
                 const oldDotTrans = dot.style.transition;
                 const oldRingTrans = ring.style.transition;
@@ -508,16 +522,28 @@
                     }
                     case 'setSetting': {
                         const { key, value } = payload || {};
-                        // [FIX #3] 增加类型与有限数校验
-                        if (key && key in FMAP && typeof value === 'number' && isFinite(value)) {
+                        if (key && key in FMAP) {
                             const f = FMAP[key];
-                            const clamped = clamp(value, f.min, f.max);
-                            overrides[key] = clamped;
+                            // [MOD] 支持布尔值写入
+                            if (f.type === 'bool') {
+                                if (typeof value !== 'boolean') {
+                                    result = { success: false, error: 'Expected boolean' };
+                                    break;
+                                }
+                                overrides[key] = value;
+                            } else if (typeof value === 'number' && isFinite(value)) {
+                                const clamped = clamp(value, f.min, f.max);
+                                overrides[key] = clamped;
+                            } else {
+                                result = { success: false, error: 'Invalid value type' };
+                                break;
+                            }
+                            
                             commit();
                             store.write('overrides', overrides);
-                            result = { success: true, key, value: clamped };
+                            result = { success: true, key, value: overrides[key] };
                         } else {
-                            result = { success: false, error: 'Invalid key or value' };
+                            result = { success: false, error: 'Invalid key' };
                         }
                         break;
                     }
@@ -573,7 +599,6 @@
             tw = textEl ? CFG.TEXT_RING_SIZE : CFG.RING_SIZE;
             th = tw; tr = tw / 2;
 
-            // [FIX #1 + #2] 增强贴合检测：零尺寸或任一维度超限则清除
             if (el) {
                 const r = el.getBoundingClientRect();
                 if ((r.width === 0 && r.height === 0) || r.width > CFG.MAX_FIT_SIZE || r.height > CFG.MAX_FIT_SIZE) {
@@ -589,41 +614,57 @@
                 }
             }
 
-            const k = 1 - Math.exp(-speed * dt);
-            rx += (tx - rx) * k; ry += (ty - ry) * k;
-            if (Math.abs(tx - rx) < 0.05) rx = tx;
-            if (Math.abs(ty - ry) < 0.05) ry = ty;
+            // [MOD] 仅在启用圆环时计算和更新圆环
+            if (CFG.ENABLE_RING) {
+                const k = 1 - Math.exp(-speed * dt);
+                rx += (tx - rx) * k; ry += (ty - ry) * k;
+                if (Math.abs(tx - rx) < 0.05) rx = tx;
+                if (Math.abs(ty - ry) < 0.05) ry = ty;
 
-            const ks = 1 - Math.exp(-CFG.SHAPE_SPEED * dt);
-            rw += (tw - rw) * ks; rh += (th - rh) * ks; rr += (tr - rr) * ks;
-            if (Math.abs(tw - rw) < 0.1) rw = tw;
-            if (Math.abs(th - rh) < 0.1) rh = th;
-            if (Math.abs(tr - rr) < 0.1) rr = tr;
+                const ks = 1 - Math.exp(-CFG.SHAPE_SPEED * dt);
+                rw += (tw - rw) * ks; rh += (th - rh) * ks; rr += (tr - rr) * ks;
+                if (Math.abs(tw - rw) < 0.1) rw = tw;
+                if (Math.abs(th - rh) < 0.1) rh = th;
+                if (Math.abs(tr - rr) < 0.1) rr = tr;
 
-            const sT = pressed ? CFG.CLICK_SCALE : 1;
-            dotV = (dotV + (sT - dotS) * CFG.SPRING_K * dt) * Math.exp(-CFG.SPRING_DAMP * dt);
-            dotS = Math.max(0.2, dotS + dotV * dt);
-            ringV = (ringV + (sT - ringS) * CFG.SPRING_K * dt) * Math.exp(-CFG.SPRING_DAMP * dt);
-            ringS = Math.max(0.2, ringS + ringV * dt);
+                const sT = pressed ? CFG.CLICK_SCALE : 1;
+                ringV = (ringV + (sT - ringS) * CFG.SPRING_K * dt) * Math.exp(-CFG.SPRING_DAMP * dt);
+                ringS = Math.max(0.2, ringS + ringV * dt);
 
-            setT(dot, mx, my, dotS, dotCache);
-            setT(ring, rx, ry, ringS, ringCache);
+                setT(ring, rx, ry, ringS, ringCache);
 
-            // [FIX #5] 截断到 0.1px 精度，减少无意义 DOM 写入
-            const qrw = Math.round(rw * 10) / 10;
-            const qrh = Math.round(rh * 10) / 10;
-            const qrr = Math.round(rr * 10) / 10;
-            if (qrw !== lastW) { ring.style.width  = qrw + 'px'; lastW = qrw; }
-            if (qrh !== lastH) { ring.style.height = qrh + 'px'; lastH = qrh; }
-            if (qrr !== lastR) { ring.style.borderRadius = qrr + 'px'; lastR = qrr; }
+                const qrw = Math.round(rw * 10) / 10;
+                const qrh = Math.round(rh * 10) / 10;
+                const qrr = Math.round(rr * 10) / 10;
+                if (qrw !== lastW) { ring.style.width  = qrw + 'px'; lastW = qrw; }
+                if (qrh !== lastH) { ring.style.height = qrh + 'px'; lastH = qrh; }
+                if (qrr !== lastR) { ring.style.borderRadius = qrr + 'px'; lastR = qrr; }
+            }
+
+            // [MOD] 仅在启用圆点时计算和更新圆点
+            if (CFG.ENABLE_DOT) {
+                const sT = pressed ? CFG.CLICK_SCALE : 1;
+                dotV = (dotV + (sT - dotS) * CFG.SPRING_K * dt) * Math.exp(-CFG.SPRING_DAMP * dt);
+                dotS = Math.max(0.2, dotS + dotV * dt);
+                setT(dot, mx, my, dotS, dotCache);
+            }
+
+            // 结算判定需要考虑开关状态
+            const ringSettled = !CFG.ENABLE_RING || (
+                Math.round(rw * 10) / 10 === Math.round(tw * 10) / 10 &&
+                Math.round(rh * 10) / 10 === Math.round(th * 10) / 10 &&
+                Math.round(rr * 10) / 10 === Math.round(tr * 10) / 10 &&
+                Math.abs(ringS - (pressed ? CFG.CLICK_SCALE : 1)) < 0.002 && Math.abs(ringV) < 0.01
+            );
+            
+            const dotSettled = !CFG.ENABLE_DOT || (
+                Math.abs(dotS - (pressed ? CFG.CLICK_SCALE : 1)) < 0.002 && Math.abs(dotV) < 0.01
+            );
 
             const settled =
-                qrw === Math.round(tw * 10) / 10 &&
-                qrh === Math.round(th * 10) / 10 &&
-                qrr === Math.round(tr * 10) / 10 &&
-                !el && sX === 0 && sY === 0 &&
-                Math.abs(dotS - sT) < 0.002 && Math.abs(dotV) < 0.01 &&
-                Math.abs(ringS - sT) < 0.002 && Math.abs(ringV) < 0.01;
+                ringSettled && dotSettled &&
+                !el && sX === 0 && sY === 0;
+                
             if (settled && t - lastInput > CFG.IDLE_PAUSE_MS) return;
 
             rafId = requestAnimationFrame(tick);
@@ -632,11 +673,12 @@
 
     // ==================== 设置面板 ====================
     let panelHost = null, panelOpen = false;
-    // [FIX #7] 将保存定时器句柄提升为模块级，以便 closePanel 清除
     let saveTimeoutId = 0;
 
     const decimals = f => String(f.step).includes('.') ? String(f.step).split('.')[1].length : 0;
-    const fmt = (v, f) => (+v).toFixed(decimals(f)) + (f.unit ? ' ' + f.unit : '');
+    const fmt = (v, f) => f.type === 'bool' 
+        ? (v ? 'ON' : 'OFF') 
+        : (+v).toFixed(decimals(f)) + (f.unit ? ' ' + f.unit : '');
     const curVal = f => (f.key in overrides ? overrides[f.key] : DEFAULTS[f.key]);
 
     function rowsHTML() {
@@ -647,17 +689,30 @@
                 html += '<section><h3>' + t('groups.' + f.g) + '</h3>';
                 lastG = f.g;
             }
+            
             const v = curVal(f);
-            const p = ((v - f.min) / (f.max - f.min) * 100).toFixed(1);
             const disabled = RM_KEYS && RM_KEYS.has(f.key) ? ' disabled' : '';
             const disabledStyle = disabled ? ' style="opacity:.4;pointer-events:none"' : '';
-            html +=
-                '<label class="row"' + disabledStyle + '>' +
-                '<span class="lab">' + t('labels.' + f.label) + '</span>' +
-                '<input type="range" data-k="' + f.key + '" min="' + f.min + '" max="' + f.max +
-                '" step="' + f.step + '" value="' + v + '" style="--p:' + p + '%"' + disabled + '>' +
-                '<span class="val">' + fmt(v, f) + '</span>' +
-                '</label>';
+            
+            if (f.type === 'bool') {
+                // [NEW] 布尔开关渲染
+                html +=
+                    '<label class="row toggle-row"' + disabledStyle + '>' +
+                    '<span class="lab">' + t('labels.' + f.label) + '</span>' +
+                    '<span class="spacer"></span>' +
+                    '<input type="checkbox" data-k="' + f.key + '"' + (v ? ' checked' : '') + disabled + '>' +
+                    '</label>';
+            } else {
+                // 原有滑块渲染
+                const p = ((v - f.min) / (f.max - f.min) * 100).toFixed(1);
+                html +=
+                    '<label class="row"' + disabledStyle + '>' +
+                    '<span class="lab">' + t('labels.' + f.label) + '</span>' +
+                    '<input type="range" data-k="' + f.key + '" min="' + f.min + '" max="' + f.max +
+                    '" step="' + f.step + '" value="' + v + '" style="--p:' + p + '%"' + disabled + '>' +
+                    '<span class="val">' + fmt(v, f) + '</span>' +
+                    '</label>';
+            }
         }
         return html + '</section>';
     }
@@ -704,9 +759,11 @@
             '.body::-webkit-scrollbar-thumb{background:rgba(255,255,255,.14);border-radius:4px}' +
             'section h3{font-size:10px;font-weight:600;letter-spacing:.24em;color:#787b85;margin:14px 2px 4px}' +
             '.row{display:grid;grid-template-columns:96px 1fr 62px;gap:10px;align-items:center;padding:3px 0}' +
+            '.row.toggle-row{grid-template-columns:1fr auto;}' +
             '.lab{font-size:12px;color:#b7bac3;white-space:nowrap}' +
             '.val{font:500 11px/1 ui-monospace,"SF Mono",Menlo,Consolas,monospace;color:#dfe1e6;' +
             'text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}' +
+            /* Range Input Styles */
             'input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:26px;' +
             'background:transparent;cursor:none;margin:0}' +
             'input[type=range]::-webkit-slider-runnable-track{height:3px;border-radius:2px;' +
@@ -720,6 +777,16 @@
             'input[type=range]::-moz-range-thumb{width:13px;height:13px;border:none;border-radius:50%;' +
             'background:#fff;box-shadow:0 1px 5px rgba(0,0,0,.55)}' +
             'input[type=range]:focus-visible{outline:2px solid rgba(255,255,255,.45);outline-offset:2px;border-radius:6px}' +
+            /* Checkbox Toggle Styles */
+            'input[type=checkbox]{-webkit-appearance:none;appearance:none;width:36px;height:20px;' +
+            'background:rgba(255,255,255,.15);border-radius:10px;position:relative;cursor:none;' +
+            'transition:background .2s ease;outline:none;vertical-align:middle}' +
+            'input[type=checkbox]::after{content:"";position:absolute;left:2px;top:2px;width:16px;height:16px;' +
+            'background:#fff;border-radius:50%;transition:transform .2s cubic-bezier(.4,.0,.2,1)}' +
+            'input[type=checkbox]:checked{background:#4cd964}' +
+            'input[type=checkbox]:checked::after{transform:translateX(16px)}' +
+            'input[type=checkbox]:focus-visible{box-shadow:0 0 0 2px rgba(255,255,255,.45)}' +
+            /* Footer & Lang */
             '.lang-row{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;' +
             'border-top:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.02)}' +
             '.lang-label{font-size:12px;color:#b7bac3}' +
@@ -787,13 +854,23 @@
             const k = e.target.dataset && e.target.dataset.k;
             if (!k) return;
             const f = FMAP[k];
-            const v = clamp(parseFloat(e.target.value), f.min, f.max);
-            overrides[k] = v;
-            e.target.closest('.row').querySelector('.val').textContent = fmt(v, f);
-            e.target.style.setProperty('--p',
-                ((v - f.min) / (f.max - f.min) * 100).toFixed(1) + '%');
-            commit();
-            scheduleSave();
+            
+            if (f.type === 'bool') {
+                // [NEW] 处理 Checkbox
+                const v = e.target.checked;
+                overrides[k] = v;
+                commit();
+                scheduleSave();
+            } else {
+                // 处理 Range
+                const v = clamp(parseFloat(e.target.value), f.min, f.max);
+                overrides[k] = v;
+                e.target.closest('.row').querySelector('.val').textContent = fmt(v, f);
+                e.target.style.setProperty('--p',
+                    ((v - f.min) / (f.max - f.min) * 100).toFixed(1) + '%');
+                commit();
+                scheduleSave();
+            }
         });
 
         langSelect.addEventListener('change', (e) => {
@@ -801,7 +878,7 @@
             if (LANGUAGES[newLang] && newLang !== CURRENT_LANG) {
                 CURRENT_LANG = newLang;
                 saveLang(newLang);
-                updateMenuLabel(); // [FIX #2] 同步更新菜单标签
+                updateMenuLabel();
                 closePanel();
                 openPanel();
             }
@@ -815,14 +892,21 @@
             } else if (b.dataset.act === 'reset') {
                 for (const k in overrides) delete overrides[k];
                 store.erase('overrides');
-                body.querySelectorAll('input[type=range]').forEach(inp => {
+                
+                // 重置所有控件
+                body.querySelectorAll('input[data-k]').forEach(inp => {
                     const f = FMAP[inp.dataset.k];
                     const v = DEFAULTS[f.key];
-                    inp.value = v;
-                    inp.style.setProperty('--p',
-                        ((v - f.min) / (f.max - f.min) * 100).toFixed(1) + '%');
-                    inp.closest('.row').querySelector('.val').textContent = fmt(v, f);
+                    if (f.type === 'bool') {
+                        inp.checked = v;
+                    } else {
+                        inp.value = v;
+                        inp.style.setProperty('--p',
+                            ((v - f.min) / (f.max - f.min) * 100).toFixed(1) + '%');
+                        inp.closest('.row').querySelector('.val').textContent = fmt(v, f);
+                    }
                 });
+                
                 commit();
                 flash('buttons.restored');
             }
@@ -841,7 +925,6 @@
         p.classList.add('pop');
     }
 
-    // [FIX #7] closePanel 中清除保存定时器
     function closePanel() {
         panelOpen = false;
         clearTimeout(saveTimeoutId);
@@ -861,7 +944,6 @@
 
     addEventListener('keydown', (e) => { if (e.key === 'Escape') closePanel(); });
 
-    // [FIX #1] 使用 composedPath() 正确检测 Shadow DOM 内部点击
     document.addEventListener('pointerdown', (e) => {
         if (!panelOpen || !panelHost) return;
         const path = e.composedPath ? e.composedPath() : [];
@@ -869,7 +951,6 @@
     }, true);
 
     // ---------- 菜单命令 ----------
-    // [FIX #2] 支持语言切换后更新菜单标签
     let menuCmdId = null;
 
     function updateMenuLabel() {
