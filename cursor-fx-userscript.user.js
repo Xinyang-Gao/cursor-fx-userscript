@@ -2,7 +2,7 @@
 // @name         Cursor FX
 // @name:zh-CN   自定义鼠标光标特效
 // @namespace    https://github.com/Xinyang-Gao/cursor-fx-userscript
-// @version      2.5.0
+// @version      2.5.1
 // @description  Smooth custom cursor: delayed ring follow, hover fitting, text caret mode, click spring scale, scroll trail. GPU-composited, frame-rate independent, auto-pauses when idle. Settings panel via the Tampermonkey menu.
 // @description:zh-CN  隐藏系统指针，使用圆点 + 圆环自定义光标：延迟跟随、悬停贴合、文本竖条、点击弹性缩放、滚动拖尾。transform 合成层定位，帧率无关平滑，空闲自动暂停。点击篡改猴菜单中的「⚙ 光标设置」打开设置面板，实时调节、自动保存。
 // @author       Xinyang-Gao
@@ -25,7 +25,7 @@
 (function () {
     'use strict';
 
-    const SCRIPT_VERSION = '2.5.0';
+    const SCRIPT_VERSION = '2.5.1';
     const WEB_API_VERSION = '1.1';
 
     // ==================== I18N ====================
@@ -136,7 +136,6 @@
 
     // ==================== 可调参数 ====================
     const DEFAULTS = {
-        // [NEW] 布尔开关
         ENABLE_DOT: true,
         ENABLE_RING: true,
         HIDE_CURSOR: true,
@@ -194,7 +193,6 @@
 
     // ---------- 字段定义 ----------
     const FIELDS = [
-        // [NEW] 开关组
         { g: 'appearance', key: 'ENABLE_DOT',     label: 'ENABLE_DOT',     type: 'bool' },
         { g: 'appearance', key: 'ENABLE_RING',    label: 'ENABLE_RING',    type: 'bool' },
         { g: 'other',      key: 'HIDE_CURSOR',    label: 'HIDE_CURSOR',    type: 'bool' },
@@ -227,7 +225,6 @@
         const raw = store.read('overrides', {});
         for (const f of FIELDS) {
             const v = raw[f.key];
-            // [MOD] 支持布尔值读取校验
             if (f.type === 'bool') {
                 if (typeof v === 'boolean') overrides[f.key] = v;
             } else if (typeof v === 'number' && isFinite(v)) {
@@ -248,12 +245,10 @@
     // ---------- 样式 ----------
     const style = document.createElement('style');
     function renderCSS() {
-        // [MOD] 根据 HIDE_CURSOR 动态决定是否隐藏原生鼠标
         const cursorRule = CFG.HIDE_CURSOR 
             ? '*, *::before, *::after { cursor: none !important; }' 
             : '';
             
-        // [MOD] 根据开关决定组件可见性基础类
         const dotDisplay = CFG.ENABLE_DOT ? '' : '.cc-dot { display: none !important; }';
         const ringDisplay = CFG.ENABLE_RING ? '' : '.cc-ring { display: none !important; }';
 
@@ -321,7 +316,6 @@
             '[contenteditable="plaintext-only"]', '[role="textbox"]',
         ].join(',');
 
-        // ----- 状态 -----
         let mx = innerWidth / 2, my = innerHeight / 2;
         let rx = mx, ry = my;
         let rw = CFG.RING_SIZE, rh = CFG.RING_SIZE, rr = CFG.RING_SIZE / 2;
@@ -524,7 +518,6 @@
                         const { key, value } = payload || {};
                         if (key && key in FMAP) {
                             const f = FMAP[key];
-                            // [MOD] 支持布尔值写入
                             if (f.type === 'bool') {
                                 if (typeof value !== 'boolean') {
                                     result = { success: false, error: 'Expected boolean' };
@@ -614,7 +607,6 @@
                 }
             }
 
-            // [MOD] 仅在启用圆环时计算和更新圆环
             if (CFG.ENABLE_RING) {
                 const k = 1 - Math.exp(-speed * dt);
                 rx += (tx - rx) * k; ry += (ty - ry) * k;
@@ -641,7 +633,6 @@
                 if (qrr !== lastR) { ring.style.borderRadius = qrr + 'px'; lastR = qrr; }
             }
 
-            // [MOD] 仅在启用圆点时计算和更新圆点
             if (CFG.ENABLE_DOT) {
                 const sT = pressed ? CFG.CLICK_SCALE : 1;
                 dotV = (dotV + (sT - dotS) * CFG.SPRING_K * dt) * Math.exp(-CFG.SPRING_DAMP * dt);
@@ -649,7 +640,6 @@
                 setT(dot, mx, my, dotS, dotCache);
             }
 
-            // 结算判定需要考虑开关状态
             const ringSettled = !CFG.ENABLE_RING || (
                 Math.round(rw * 10) / 10 === Math.round(tw * 10) / 10 &&
                 Math.round(rh * 10) / 10 === Math.round(th * 10) / 10 &&
@@ -695,15 +685,12 @@
             const disabledStyle = disabled ? ' style="opacity:.4;pointer-events:none"' : '';
             
             if (f.type === 'bool') {
-                // [NEW] 布尔开关渲染
                 html +=
                     '<label class="row toggle-row"' + disabledStyle + '>' +
                     '<span class="lab">' + t('labels.' + f.label) + '</span>' +
-                    '<span class="spacer"></span>' +
                     '<input type="checkbox" data-k="' + f.key + '"' + (v ? ' checked' : '') + disabled + '>' +
                     '</label>';
             } else {
-                // 原有滑块渲染
                 const p = ((v - f.min) / (f.max - f.min) * 100).toFixed(1);
                 html +=
                     '<label class="row"' + disabledStyle + '>' +
@@ -759,7 +746,7 @@
             '.body::-webkit-scrollbar-thumb{background:rgba(255,255,255,.14);border-radius:4px}' +
             'section h3{font-size:10px;font-weight:600;letter-spacing:.24em;color:#787b85;margin:14px 2px 4px}' +
             '.row{display:grid;grid-template-columns:96px 1fr 62px;gap:10px;align-items:center;padding:3px 0}' +
-            '.row.toggle-row{grid-template-columns:1fr auto;}' +
+            '.row.toggle-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0}' +
             '.lab{font-size:12px;color:#b7bac3;white-space:nowrap}' +
             '.val{font:500 11px/1 ui-monospace,"SF Mono",Menlo,Consolas,monospace;color:#dfe1e6;' +
             'text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}' +
@@ -779,13 +766,22 @@
             'input[type=range]:focus-visible{outline:2px solid rgba(255,255,255,.45);outline-offset:2px;border-radius:6px}' +
             /* Checkbox Toggle Styles */
             'input[type=checkbox]{-webkit-appearance:none;appearance:none;width:36px;height:20px;' +
-            'background:rgba(255,255,255,.15);border-radius:10px;position:relative;cursor:none;' +
-            'transition:background .2s ease;outline:none;vertical-align:middle}' +
-            'input[type=checkbox]::after{content:"";position:absolute;left:2px;top:2px;width:16px;height:16px;' +
-            'background:#fff;border-radius:50%;transition:transform .2s cubic-bezier(.4,.0,.2,1)}' +
-            'input[type=checkbox]:checked{background:#4cd964}' +
-            'input[type=checkbox]:checked::after{transform:translateX(16px)}' +
+            'background:transparent;border:1.5px solid rgba(255,255,255,.3);border-radius:10px;' +
+            'position:relative;cursor:none;transition:all .2s ease;outline:none;vertical-align:middle;flex-shrink:0}' +
+            'input[type=checkbox]::after{content:"";position:absolute;left:2px;top:50%;transform:translateY(-50%);' +
+            'width:12px;height:12px;background:rgba(255,255,255,.5);border-radius:50%;' +
+            'transition:all .2s cubic-bezier(.4,.0,.2,1)}' +
+            /* Checked State: White BG, Dark Knob for contrast */
+            'input[type=checkbox]:checked{background:#fff;border-color:#fff}' +
+            'input[type=checkbox]:checked::after{left:18px;background:#131417;transform:translateY(-50%)}' +
+            /* Hover & Active Effects matching slider thumb */
+            'input[type=checkbox]:hover{border-color:rgba(255,255,255,.6)}' +
+            'input[type=checkbox]:hover::after{transform:translateY(-50%) scale(1.15)}' +
+            'input[type=checkbox]:checked:hover::after{transform:translateY(-50%) scale(1.15)}' +
+            'input[type=checkbox]:active::after{width:14px}' +
+            'input[type=checkbox]:checked:active::after{left:16px;width:14px}' +
             'input[type=checkbox]:focus-visible{box-shadow:0 0 0 2px rgba(255,255,255,.45)}' +
+            
             /* Footer & Lang */
             '.lang-row{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;' +
             'border-top:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.02)}' +
@@ -856,13 +852,11 @@
             const f = FMAP[k];
             
             if (f.type === 'bool') {
-                // [NEW] 处理 Checkbox
                 const v = e.target.checked;
                 overrides[k] = v;
                 commit();
                 scheduleSave();
             } else {
-                // 处理 Range
                 const v = clamp(parseFloat(e.target.value), f.min, f.max);
                 overrides[k] = v;
                 e.target.closest('.row').querySelector('.val').textContent = fmt(v, f);
@@ -893,7 +887,6 @@
                 for (const k in overrides) delete overrides[k];
                 store.erase('overrides');
                 
-                // 重置所有控件
                 body.querySelectorAll('input[data-k]').forEach(inp => {
                     const f = FMAP[inp.dataset.k];
                     const v = DEFAULTS[f.key];
