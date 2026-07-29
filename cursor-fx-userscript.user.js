@@ -2,7 +2,7 @@
 // @name         Cursor FX
 // @name:zh-CN   自定义鼠标光标特效
 // @namespace    https://github.com/Xinyang-Gao/cursor-fx-userscript
-// @version      2.5.1
+// @version      2.6.0
 // @description  Smooth custom cursor: delayed ring follow, hover fitting, text caret mode, click spring scale, scroll trail. GPU-composited, frame-rate independent, auto-pauses when idle. Settings panel via the Tampermonkey menu.
 // @description:zh-CN  隐藏系统指针，使用圆点 + 圆环自定义光标：延迟跟随、悬停贴合、文本竖条、点击弹性缩放、滚动拖尾。transform 合成层定位，帧率无关平滑，空闲自动暂停。点击篡改猴菜单中的「⚙ 光标设置」打开设置面板，实时调节、自动保存。
 // @author       Xinyang-Gao
@@ -25,8 +25,8 @@
 (function () {
     'use strict';
 
-    const SCRIPT_VERSION = '2.5.1';
-    const WEB_API_VERSION = '1.1';
+    const SCRIPT_VERSION = '2.6.0';
+    const WEB_API_VERSION = '1.2';
 
     // ==================== I18N ====================
     const LANGUAGES = {
@@ -47,9 +47,9 @@
                     RING_ALPHA: '圆环透明度', FIT_PADDING: '贴合留白', MAX_FIT_SIZE: '最大贴合尺寸',
                     FOLLOW_SPEED: '跟随速度', FIT_SPEED: '吸附速度', SHAPE_SPEED: '形变速度',
                     CLICK_SCALE: '按下缩放', SPRING_K: '回弹刚度', SPRING_DAMP: '回弹阻尼',
-                    SCROLL_MAX: '拖尾幅度', SCROLL_DECAY: '拖尾回收', TEXT_BAR_W: '竖条宽度',
-                    TEXT_BAR_H: '竖条高度', TEXT_RING_SIZE: '文本环大小', TEXT_RING_ALPHA: '文本环透明度',
-                    IDLE_PAUSE_MS: '空闲暂停'
+                    SCROLL_ENABLED: '启用滚轮反馈', SCROLL_MAX: '拖尾幅度', SCROLL_DECAY: '拖尾回收',
+                    TEXT_BAR_W: '竖条宽度', TEXT_BAR_H: '竖条高度', TEXT_RING_SIZE: '文本环大小',
+                    TEXT_RING_ALPHA: '文本环透明度', IDLE_PAUSE_MS: '空闲暂停'
                 },
                 buttons: {
                     reset: '恢复默认', close: '完成',
@@ -79,9 +79,9 @@
                     RING_ALPHA: 'Ring Opacity', FIT_PADDING: 'Fit Padding', MAX_FIT_SIZE: 'Max Fit Size',
                     FOLLOW_SPEED: 'Follow Speed', FIT_SPEED: 'Fit Speed', SHAPE_SPEED: 'Shape Speed',
                     CLICK_SCALE: 'Click Scale', SPRING_K: 'Spring Stiffness', SPRING_DAMP: 'Spring Damping',
-                    SCROLL_MAX: 'Scroll Trail Max', SCROLL_DECAY: 'Scroll Decay', TEXT_BAR_W: 'Bar Width',
-                    TEXT_BAR_H: 'Bar Height', TEXT_RING_SIZE: 'Text Ring Size', TEXT_RING_ALPHA: 'Text Ring Alpha',
-                    IDLE_PAUSE_MS: 'Idle Pause'
+                    SCROLL_ENABLED: 'Enable Scroll Feedback', SCROLL_MAX: 'Scroll Trail Max', SCROLL_DECAY: 'Scroll Decay',
+                    TEXT_BAR_W: 'Bar Width', TEXT_BAR_H: 'Bar Height', TEXT_RING_SIZE: 'Text Ring Size',
+                    TEXT_RING_ALPHA: 'Text Ring Alpha', IDLE_PAUSE_MS: 'Idle Pause'
                 },
                 buttons: {
                     reset: 'Reset Defaults', close: 'Done',
@@ -153,6 +153,7 @@
         FOLLOW_SPEED: 16,
         FIT_SPEED: 26,
         SHAPE_SPEED: 18,
+        SCROLL_ENABLED: false,
         SCROLL_MAX: 30,
         SCROLL_DECAY: 7,
         CLICK_SCALE: 0.78,
@@ -191,7 +192,7 @@
         },
     };
 
-    // ---------- 字段定义 ----------
+    // ---------- 字段定义与依赖关系 ----------
     const FIELDS = [
         { g: 'appearance', key: 'ENABLE_DOT',     label: 'ENABLE_DOT',     type: 'bool' },
         { g: 'appearance', key: 'ENABLE_RING',    label: 'ENABLE_RING',    type: 'bool' },
@@ -209,8 +210,9 @@
         { g: 'click',      key: 'CLICK_SCALE',    label: 'CLICK_SCALE',    min: 0.4, max: 1,    step: 0.02, unit: '' },
         { g: 'click',      key: 'SPRING_K',       label: 'SPRING_K',       min: 100, max: 1200, step: 20,   unit: '' },
         { g: 'click',      key: 'SPRING_DAMP',    label: 'SPRING_DAMP',    min: 5,   max: 40,   step: 1,    unit: '' },
-        { g: 'scroll',     key: 'SCROLL_MAX',     label: 'SCROLL_MAX',     min: 0,   max: 80,   step: 2,    unit: 'px' },
-        { g: 'scroll',     key: 'SCROLL_DECAY',   label: 'SCROLL_DECAY',   min: 1,   max: 20,   step: 0.5,  unit: '' },
+        { g: 'scroll',     key: 'SCROLL_ENABLED', label: 'SCROLL_ENABLED', type: 'bool' },
+        { g: 'scroll',     key: 'SCROLL_MAX',     label: 'SCROLL_MAX',     min: 0,   max: 80,   step: 2,    unit: 'px', deps: ['SCROLL_ENABLED'] },
+        { g: 'scroll',     key: 'SCROLL_DECAY',   label: 'SCROLL_DECAY',   min: 1,   max: 20,   step: 0.5,  unit: '',    deps: ['SCROLL_ENABLED'] },
         { g: 'text',       key: 'TEXT_BAR_W',     label: 'TEXT_BAR_W',     min: 1,   max: 6,    step: 0.5,  unit: 'px' },
         { g: 'text',       key: 'TEXT_BAR_H',     label: 'TEXT_BAR_H',     min: 12,  max: 40,   step: 1,    unit: 'px' },
         { g: 'text',       key: 'TEXT_RING_SIZE', label: 'TEXT_RING_SIZE', min: 12,  max: 64,   step: 2,    unit: 'px' },
@@ -235,11 +237,11 @@
 
     const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
     const RM_KEYS = RM
-        ? new Set(['FOLLOW_SPEED', 'FIT_SPEED', 'SHAPE_SPEED', 'SCROLL_MAX', 'SPRING_K', 'SPRING_DAMP'])
+        ? new Set(['FOLLOW_SPEED', 'FIT_SPEED', 'SHAPE_SPEED', 'SCROLL_MAX', 'SCROLL_DECAY', 'SPRING_K', 'SPRING_DAMP'])
         : null;
     const RM_PATCH = RM ? {
         FOLLOW_SPEED: 1e4, FIT_SPEED: 1e4, SHAPE_SPEED: 1e4,
-        SCROLL_MAX: 0, SPRING_K: 1e4, SPRING_DAMP: 1e4,
+        SCROLL_MAX: 0, SCROLL_DECAY: 1e4, SPRING_K: 1e4, SPRING_DAMP: 1e4,
     } : null;
 
     // ---------- 样式 ----------
@@ -393,6 +395,7 @@
         addEventListener('pointercancel', () => { pressed = false; wake(); });
 
         addEventListener('wheel', (e) => {
+            if (!CFG.SCROLL_ENABLED) return;
             if (hoverEl || focusEl || textEl) return;
             let dx = e.deltaX, dy = e.deltaY;
             if (e.deltaMode === 1) { dx *= 16; dy *= 16; }
@@ -671,6 +674,22 @@
         : (+v).toFixed(decimals(f)) + (f.unit ? ' ' + f.unit : '');
     const curVal = f => (f.key in overrides ? overrides[f.key] : DEFAULTS[f.key]);
 
+    /**
+     * 检查某个字段当前是否应该被禁用
+     * 1. 系统减少动态效果 (RM)
+     * 2. 依赖的父级布尔值为 false
+     */
+    function isFieldDisabled(f) {
+        if (RM_KEYS && RM_KEYS.has(f.key)) return true;
+        if (f.deps) {
+            for (const depKey of f.deps) {
+                const val = depKey in overrides ? overrides[depKey] : DEFAULTS[depKey];
+                if (!val) return true;
+            }
+        }
+        return false;
+    }
+
     function rowsHTML() {
         let html = '', lastG = '';
         for (const f of FIELDS) {
@@ -681,14 +700,15 @@
             }
             
             const v = curVal(f);
-            const disabled = RM_KEYS && RM_KEYS.has(f.key) ? ' disabled' : '';
+            const disabled = isFieldDisabled(f);
+            const disabledAttr = disabled ? ' disabled' : '';
             const disabledStyle = disabled ? ' style="opacity:.4;pointer-events:none"' : '';
             
             if (f.type === 'bool') {
                 html +=
                     '<label class="row toggle-row"' + disabledStyle + '>' +
                     '<span class="lab">' + t('labels.' + f.label) + '</span>' +
-                    '<input type="checkbox" data-k="' + f.key + '"' + (v ? ' checked' : '') + disabled + '>' +
+                    '<input type="checkbox" data-k="' + f.key + '"' + (v ? ' checked' : '') + disabledAttr + '>' +
                     '</label>';
             } else {
                 const p = ((v - f.min) / (f.max - f.min) * 100).toFixed(1);
@@ -696,12 +716,31 @@
                     '<label class="row"' + disabledStyle + '>' +
                     '<span class="lab">' + t('labels.' + f.label) + '</span>' +
                     '<input type="range" data-k="' + f.key + '" min="' + f.min + '" max="' + f.max +
-                    '" step="' + f.step + '" value="' + v + '" style="--p:' + p + '%"' + disabled + '>' +
+                    '" step="' + f.step + '" value="' + v + '" style="--p:' + p + '%"' + disabledAttr + '>' +
                     '<span class="val">' + fmt(v, f) + '</span>' +
                     '</label>';
             }
         }
         return html + '</section>';
+    }
+
+    /**
+     * 更新面板内所有字段的禁用状态（不重建 DOM）
+     */
+    function updatePanelDisabledState(sh) {
+        for (const f of FIELDS) {
+            const inp = sh.querySelector(`input[data-k="${f.key}"]`);
+            if (!inp) continue;
+            
+            const disabled = isFieldDisabled(f);
+            const row = inp.closest('.row');
+            
+            inp.disabled = disabled;
+            if (row) {
+                row.style.opacity = disabled ? '.4' : '';
+                row.style.pointerEvents = disabled ? 'none' : '';
+            }
+        }
     }
 
     function buildPanel() {
@@ -745,7 +784,8 @@
             '.body::-webkit-scrollbar{width:8px}' +
             '.body::-webkit-scrollbar-thumb{background:rgba(255,255,255,.14);border-radius:4px}' +
             'section h3{font-size:10px;font-weight:600;letter-spacing:.24em;color:#787b85;margin:14px 2px 4px}' +
-            '.row{display:grid;grid-template-columns:96px 1fr 62px;gap:10px;align-items:center;padding:3px 0}' +
+            '.row{display:grid;grid-template-columns:96px 1fr 62px;gap:10px;align-items:center;padding:3px 0;' +
+            'transition:opacity .2s ease}' +
             '.row.toggle-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0}' +
             '.lab{font-size:12px;color:#b7bac3;white-space:nowrap}' +
             '.val{font:500 11px/1 ui-monospace,"SF Mono",Menlo,Consolas,monospace;color:#dfe1e6;' +
@@ -764,6 +804,7 @@
             'input[type=range]::-moz-range-thumb{width:13px;height:13px;border:none;border-radius:50%;' +
             'background:#fff;box-shadow:0 1px 5px rgba(0,0,0,.55)}' +
             'input[type=range]:focus-visible{outline:2px solid rgba(255,255,255,.45);outline-offset:2px;border-radius:6px}' +
+            'input[type=range]:disabled{opacity:.5;cursor:not-allowed}' +
             /* Checkbox Toggle Styles */
             'input[type=checkbox]{-webkit-appearance:none;appearance:none;width:36px;height:20px;' +
             'background:transparent;border:1.5px solid rgba(255,255,255,.3);border-radius:10px;' +
@@ -771,16 +812,15 @@
             'input[type=checkbox]::after{content:"";position:absolute;left:2px;top:50%;transform:translateY(-50%);' +
             'width:12px;height:12px;background:rgba(255,255,255,.5);border-radius:50%;' +
             'transition:all .2s cubic-bezier(.4,.0,.2,1)}' +
-            /* Checked State: White BG, Dark Knob for contrast */
             'input[type=checkbox]:checked{background:#fff;border-color:#fff}' +
             'input[type=checkbox]:checked::after{left:18px;background:#131417;transform:translateY(-50%)}' +
-            /* Hover & Active Effects matching slider thumb */
             'input[type=checkbox]:hover{border-color:rgba(255,255,255,.6)}' +
             'input[type=checkbox]:hover::after{transform:translateY(-50%) scale(1.15)}' +
             'input[type=checkbox]:checked:hover::after{transform:translateY(-50%) scale(1.15)}' +
             'input[type=checkbox]:active::after{width:14px}' +
             'input[type=checkbox]:checked:active::after{left:16px;width:14px}' +
             'input[type=checkbox]:focus-visible{box-shadow:0 0 0 2px rgba(255,255,255,.45)}' +
+            'input[type=checkbox]:disabled{opacity:.5;cursor:not-allowed}' +
             
             /* Footer & Lang */
             '.lang-row{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;' +
@@ -855,6 +895,8 @@
                 const v = e.target.checked;
                 overrides[k] = v;
                 commit();
+                // 当布尔值改变时，更新依赖它的子字段的禁用状态
+                updatePanelDisabledState(sh);
                 scheduleSave();
             } else {
                 const v = clamp(parseFloat(e.target.value), f.min, f.max);
@@ -901,6 +943,7 @@
                 });
                 
                 commit();
+                updatePanelDisabledState(sh);
                 flash('buttons.restored');
             }
         });
