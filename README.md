@@ -4,6 +4,8 @@
   <strong>Smooth custom cursor with spring physics — a single userscript, zero dependencies.</strong>
 </p>
 
+<p align="center"><img src="https://raw.githubusercontent.com/Xinyang-Gao/cursor-fx-userscript/main/assets/demo.gif" width="720" alt="demo" /></p>
+
 <p align="center">
   <a href="https://github.com/Xinyang-Gao/cursor-fx-userscript/releases"><img src="https://img.shields.io/github/v/release/Xinyang-Gao/cursor-fx-userscript?label=version&color=4fc3f7" alt="version" /></a>
   <a href="https://github.com/Xinyang-Gao/cursor-fx-userscript/blob/main/LICENSE"><img src="https://img.shields.io/github/license/Xinyang-Gao/cursor-fx-userscript?color=a5d6a7" alt="license" /></a>
@@ -37,13 +39,6 @@
 | **Web API** | Page scripts can query state or change settings through `CustomEvent` (see [API](#-web-api)). |
 | **Touch-safe** | Skips entirely on `pointer: coarse` devices. |
 | **Shadow DOM isolation** | The settings panel lives inside a Shadow Root — no style leaks, no conflicts. |
-
-## Preview
-
-<!-- Replace with your own GIF / screenshot -->
-<!-- <p align="center"><img src="assets/demo.gif" width="720" alt="demo" /></p> -->
-
-> *TODO: add a short demo GIF here.*
 
 ## Installation
 
@@ -223,13 +218,6 @@ Bug reports and feature requests are welcome via [Issues](https://github.com/Xin
 | **Web API** | 页面脚本可通过 `CustomEvent` 查询状态或修改设置（见 [API](#-web-api-1)）。 |
 | **触屏安全** | 在 `pointer: coarse` 设备上自动跳过，不注入任何内容。 |
 | **Shadow DOM 隔离** | 设置面板置于 Shadow Root 内，样式零泄漏、零冲突。 |
-
-## 预览
-
-<!-- 替换为你自己的 GIF / 截图 -->
-<!-- <p align="center"><img src="assets/demo.gif" width="720" alt="演示" /></p> -->
-
-> *TODO：在此添加演示 GIF。*
 
 ## 安装
 
