@@ -2,7 +2,7 @@
 // @name         Cursor FX
 // @name:zh-CN   自定义鼠标光标特效
 // @namespace    https://github.com/Xinyang-Gao/cursor-fx-userscript
-// @version      2.7.1
+// @version      3.0.0
 // @description  Smooth custom cursor: delayed ring follow, hover fitting, text caret mode, click spring scale, scroll trail. GPU-composited, frame-rate independent, auto-pauses when idle. Settings panel via the Tampermonkey menu.
 // @description:zh-CN  隐藏系统指针，使用圆点 + 圆环自定义光标：延迟跟随、悬停贴合、文本竖条、点击弹性缩放、滚动拖尾。transform 合成层定位，帧率无关平滑，空闲自动暂停。点击篡改猴菜单中的「⚙ 光标设置」打开设置面板，实时调节、自动保存。
 // @author       Xinyang-Gao
@@ -25,7 +25,7 @@
 (function () {
     'use strict';
 
-    const SCRIPT_VERSION = '2.7.1';
+    const SCRIPT_VERSION = '3.0.0';
     const WEB_API_VERSION = '1.3';
 
     // ==================== I18N ====================
@@ -97,14 +97,29 @@
     };
 
     const STORE_PREFIX = 'CursorFX.';
+    const hasGM = typeof GM_getValue === 'function';
+
+    function readRaw(key) {
+        try {
+            return hasGM ? GM_getValue(STORE_PREFIX + key, null) : localStorage.getItem(STORE_PREFIX + key);
+        } catch { return null; }
+    }
+    function writeRaw(key, s) {
+        try {
+            if (hasGM) GM_setValue(STORE_PREFIX + key, s);
+            else localStorage.setItem(STORE_PREFIX + key, s);
+        } catch { /* ignore */ }
+    }
+    function eraseRaw(key) {
+        try {
+            if (typeof GM_deleteValue === 'function') GM_deleteValue(STORE_PREFIX + key);
+            else localStorage.removeItem(STORE_PREFIX + key);
+        } catch { /* ignore */ }
+    }
 
     function getInitialLang() {
-        try {
-            const stored = typeof GM_getValue === 'function'
-                ? GM_getValue(STORE_PREFIX + 'lang', null)
-                : localStorage.getItem(STORE_PREFIX + 'lang');
-            if (stored && LANGUAGES[stored]) return stored;
-        } catch (_) { /* ignore */ }
+        const stored = readRaw('lang');
+        if (stored && LANGUAGES[stored]) return stored;
 
         const candidates = navigator.languages || [navigator.language || 'en'];
         for (const lang of candidates) {
@@ -118,21 +133,15 @@
 
     let CURRENT_LANG = getInitialLang();
 
-    function t(key, params = {}) {
+    function t(key, params) {
         const dict = LANGUAGES[CURRENT_LANG].dict;
-        let val = key.split('.').reduce((o, k) => (o ? o[k] : null), dict);
+        const val = key.split('.').reduce((o, k) => (o ? o[k] : null), dict);
         if (val == null) return key;
-        return val.replace(/\{(\w+)\}/g, (m, p) =>
-            params[p] !== undefined ? params[p] : m
-        );
+        if (!params) return val;
+        return val.replace(/\{(\w+)\}/g, (m, p) => params[p] !== undefined ? params[p] : m);
     }
 
-    function saveLang(lang) {
-        try {
-            if (typeof GM_setValue === 'function') GM_setValue(STORE_PREFIX + 'lang', lang);
-            else localStorage.setItem(STORE_PREFIX + 'lang', lang);
-        } catch (_) { /* ignore */ }
-    }
+    function saveLang(lang) { writeRaw('lang', lang); }
 
     // ==================== 可调参数 ====================
     const DEFAULTS = {
@@ -167,32 +176,7 @@
 
     if (matchMedia('(pointer: coarse)').matches) return;
 
-    // ---------- 设置存储 ----------
-    const store = {
-        read(k, fb) {
-            try {
-                const raw = typeof GM_getValue === 'function'
-                    ? GM_getValue(STORE_PREFIX + k, null)
-                    : localStorage.getItem(STORE_PREFIX + k);
-                return raw == null ? fb : JSON.parse(raw);
-            } catch { return fb; }
-        },
-        write(k, v) {
-            try {
-                const s = JSON.stringify(v);
-                if (typeof GM_setValue === 'function') GM_setValue(STORE_PREFIX + k, s);
-                else localStorage.setItem(STORE_PREFIX + k, s);
-            } catch { /* ignore */ }
-        },
-        erase(k) {
-            try {
-                if (typeof GM_deleteValue === 'function') GM_deleteValue(STORE_PREFIX + k);
-                else localStorage.removeItem(STORE_PREFIX + k);
-            } catch { /* ignore */ }
-        },
-    };
-
-    // ---------- 字段定义与依赖关系 ----------
+    // ---------- 字段定义 ----------
     const FIELDS = [
         { g: 'appearance', key: 'ENABLE_DOT', label: 'ENABLE_DOT', type: 'bool' },
         { g: 'appearance', key: 'ENABLE_RING', label: 'ENABLE_RING', type: 'bool' },
@@ -220,11 +204,13 @@
         { g: 'other', key: 'IDLE_PAUSE_MS', label: 'IDLE_PAUSE_MS', min: 500, max: 10000, step: 250, unit: 'ms' },
     ];
     const FMAP = Object.create(null);
-    FIELDS.forEach(f => FMAP[f.key] = f);
+    for (const f of FIELDS) FMAP[f.key] = f;
 
+    // ---------- 覆盖值加载 ----------
     const overrides = Object.create(null);
     {
-        const raw = store.read('overrides', {});
+        let raw = {};
+        try { raw = JSON.parse(readRaw('overrides') || '{}'); } catch { raw = {}; }
         for (const f of FIELDS) {
             const v = raw[f.key];
             if (f.type === 'bool') {
@@ -244,17 +230,54 @@
         SCROLL_MAX: 0, SCROLL_DECAY: 1e4, SPRING_K: 1e4, SPRING_DAMP: 1e4,
     } : null;
 
+    // ---------- 选择器 & 几何工具 ----------
+    const SEL_INTERACTIVE = 'a, button, [role="button"], [tabindex]:not([tabindex="-1"]), [onclick]';
+    const SEL_TEXT = [
+        'input:not([type="button"]):not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="reset"]):not([type="image"]):not([type="range"]):not([type="color"]):not([type="file"])',
+        'textarea', '[contenteditable="true"]', '[contenteditable=""]',
+        '[contenteditable="plaintext-only"]', '[role="textbox"]',
+    ].join(',');
+
+    function parseBorderRadius(el, rect) {
+        const br = getComputedStyle(el).borderRadius || '0px';
+        const parts = br.split(/\s+/);
+        const minSide = Math.min(rect.width, rect.height);
+        let max = 0;
+        for (const p of parts) {
+            const v = parseFloat(p);
+            if (!isFinite(v)) continue;
+            max = Math.max(max, p.endsWith('%') ? (v / 100 * minSide) : v);
+        }
+        return max;
+    }
+
+    function measure(el) {
+        const r = el.getBoundingClientRect();
+        if (r.width === 0 && r.height === 0) return null;
+        if (r.width > CFG.MAX_FIT_SIZE || r.height > CFG.MAX_FIT_SIZE) return null;
+        return parseBorderRadius(el, r);
+    }
+
+    function writeTransform(el, x, y, s, cache) {
+        const qx = Math.round(x * 100) / 100;
+        const qy = Math.round(y * 100) / 100;
+        const qs = Math.round(s * 1000) / 1000;
+        if (cache.x === qx && cache.y === qy && cache.s === qs) return;
+        cache.x = qx; cache.y = qy; cache.s = qs;
+        el.style.transform = 'translate3d(' + qx + 'px,' + qy + 'px,0) translate(-50%,-50%) scale(' + qs + ')';
+    }
+
     // ---------- 样式 ----------
-    const style = document.createElement('style');
+    const styleEl = document.createElement('style');
+
     function renderCSS() {
         const cursorRule = CFG.HIDE_CURSOR
             ? '*, *::before, *::after { cursor: none !important; }'
             : '';
-
         const dotDisplay = CFG.ENABLE_DOT ? '' : '.cc-dot { display: none !important; }';
         const ringDisplay = CFG.ENABLE_RING ? '' : '.cc-ring { display: none !important; }';
 
-        style.textContent = `
+        styleEl.textContent = `
             ${cursorRule}
             .cc-dot, .cc-ring {
                 position: fixed; left: 0; top: 0;
@@ -281,377 +304,338 @@
         `;
     }
 
-    let commitQueued = false, api = null;
-    function commit() {
-        Object.assign(CFG, DEFAULTS, overrides);
-        if (RM_PATCH) Object.assign(CFG, RM_PATCH);
-        if (commitQueued) return;
-        commitQueued = true;
-        requestAnimationFrame(() => {
-            commitQueued = false;
-            renderCSS();
-            if (api) api.refresh();
-        });
-    }
+    // ---------- 光标控制器 ----------
+    class CursorController {
+        constructor() {
+            this.dotEl = null;
+            this.ringEl = null;
+            this.abortCtrl = null;
+            this.rafId = 0;
+            this.active = false;
+            this._tickBound = this._tick.bind(this);
+            this.dotCache = { x: NaN, y: NaN, s: NaN };
+            this.ringCache = { x: NaN, y: NaN, s: NaN };
+        }
 
-    Object.assign(CFG, DEFAULTS, overrides);
-    if (RM_PATCH) Object.assign(CFG, RM_PATCH);
-    renderCSS();
-    (document.head || document.documentElement).appendChild(style);
+        isMounted() {
+            return !!(this.dotEl && this.dotEl.isConnected && this.ringEl && this.ringEl.isConnected);
+        }
 
-    // ---------- 光标元素 & SPA 守护 ----------
-    let dotEl = null, ringEl = null;
-    let runGeneration = 0; // 用于在 SPA 重建时让旧的 rAF/事件自动失效
+        mount() {
+            if (this.isMounted()) return;
+            this.unmount();
 
-    function spawn() {
-        // 如果元素仍然存活，无需操作
-        if (dotEl && dotEl.isConnected && ringEl && ringEl.isConnected) return;
+            this.dotEl = document.createElement('div');
+            this.ringEl = document.createElement('div');
+            this.dotEl.className = 'cc-dot';
+            this.ringEl.className = 'cc-ring';
+            document.documentElement.append(this.ringEl, this.dotEl);
 
-        // 递增 generation，使旧的 run() 循环自动退出
-        runGeneration++;
+            // 重置运动状态
+            const cx = innerWidth / 2, cy = innerHeight / 2;
+            this.mx = cx; this.my = cy;
+            this.rx = cx; this.ry = cy;
+            this.rw = CFG.RING_SIZE; this.rh = CFG.RING_SIZE; this.rr = CFG.RING_SIZE / 2;
+            this.lastW = -1; this.lastH = -1; this.lastR = -1;
+            this.tw = 0; this.th = 0; this.tr = 0;
+            this.sX = 0; this.sY = 0;
+            this.dotS = 1; this.ringS = 1; this.dotV = 0; this.ringV = 0;
+            this.pressed = false;
+            this.hoverEl = null; this.hoverRad = 0;
+            this.focusEl = null; this.focusRad = 0;
+            this.textEl = null; this.dotIsBar = false; this.ringDim = false;
+            this.shown = false; this.inside = true;
+            this.lastInput = 0; this.lastT = 0;
+            this.dotCache.x = this.dotCache.y = this.dotCache.s = NaN;
+            this.ringCache.x = this.ringCache.y = this.ringCache.s = NaN;
 
-        // 清理孤儿引用
-        if (dotEl && !dotEl.isConnected) dotEl = null;
-        if (ringEl && !ringEl.isConnected) ringEl = null;
+            writeTransform(this.dotEl, this.mx, this.my, 1, this.dotCache);
+            writeTransform(this.ringEl, this.rx, this.ry, 1, this.ringCache);
 
-        dotEl = document.createElement('div');
-        ringEl = document.createElement('div');
-        dotEl.className = 'cc-dot';
-        ringEl.className = 'cc-ring';
+            this.abortCtrl = new AbortController();
+            const sig = this.abortCtrl.signal;
+            this._bindEvents(sig);
+            this._installApi(sig);
 
-        // 挂载到 documentElement 而非 body，避开绝大多数 SPA 框架的 DOM 替换
-        document.documentElement.append(ringEl, dotEl);
+            this.active = true;
+            this.lastT = performance.now();
+            this.lastInput = this.lastT;
+            this.rafId = requestAnimationFrame(this._tickBound);
+        }
 
-        run(dotEl, ringEl, runGeneration);
-    }
+        unmount() {
+            this.active = false;
+            if (this.abortCtrl) { this.abortCtrl.abort(); this.abortCtrl = null; }
+            if (this.rafId) { cancelAnimationFrame(this.rafId); this.rafId = 0; }
+            if (this.dotEl) this.dotEl.remove();
+            if (this.ringEl) this.ringEl.remove();
+            this.dotEl = null;
+            this.ringEl = null;
+        }
 
-    /**
-     * 启动轻量 DOM 守护
-     * 仅在光标元素断开连接时触发重建，回调内仅做 O(1) 布尔检查
-     */
-    function startGuardian() {
-        if (document.documentElement) spawn();
-        else document.addEventListener('DOMContentLoaded', spawn, { once: true });
+        refresh() {
+            const { dotEl: dot, ringEl: ring } = this;
+            if (!dot || !ring) return;
 
-        const observer = new MutationObserver(() => {
-            // O(1) 检查，不做任何 DOM 查询
-            if ((dotEl && !dotEl.isConnected) || (ringEl && !ringEl.isConnected)) {
-                spawn();
+            const dotTrans = dot.style.transition;
+            const ringTrans = ring.style.transition;
+            dot.style.transition = 'none';
+            ring.style.transition = 'none';
+
+            // 强制重绘一次形状
+            const b = this.dotIsBar; this.dotIsBar = !b; this._setDotShape(b);
+            const d = this.ringDim; this.ringDim = !d; this._setRingAlpha(d);
+
+            this.lastW = this.lastH = this.lastR = -1;
+            this.dotCache.x = this.dotCache.y = this.dotCache.s = NaN;
+            this.ringCache.x = this.ringCache.y = this.ringCache.s = NaN;
+
+            requestAnimationFrame(() => {
+                if (this.dotEl) this.dotEl.style.transition = dotTrans || '';
+                if (this.ringEl) this.ringEl.style.transition = ringTrans || '';
+            });
+
+            this.wake();
+        }
+
+        show() {
+            if (this.shown) return;
+            this.shown = true;
+            this.dotEl && this.dotEl.classList.add('cc-live');
+            this.ringEl && this.ringEl.classList.add('cc-live');
+        }
+
+        hide() {
+            if (!this.shown) return;
+            this.shown = false;
+            this.dotEl && this.dotEl.classList.remove('cc-live');
+            this.ringEl && this.ringEl.classList.remove('cc-live');
+        }
+
+        wake() {
+            this.lastInput = performance.now();
+            this.show();
+            if (!this.rafId) {
+                this.lastT = this.lastInput;
+                this.rafId = requestAnimationFrame(this._tickBound);
             }
-        });
-
-        const observe = () => {
-            observer.observe(document.documentElement, { childList: true, subtree: true });
-        };
-
-        if (document.documentElement) observe();
-        else document.addEventListener('DOMContentLoaded', observe, { once: true });
-    }
-
-    function run(dot, ring, gen) {
-        // 安全检查：若传入的元素无效或已被替换，恢复系统光标并退出
-        if (!dot || !ring || !dot.isConnected || !ring.isConnected) {
-            style.textContent = '';
-            return;
         }
 
-        const SEL_INTERACTIVE = 'a, button, [role="button"], [tabindex]:not([tabindex="-1"]), [onclick]';
-        const SEL_TEXT = [
-            'input:not([type="button"]):not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="reset"]):not([type="image"]):not([type="range"]):not([type="color"]):not([type="file"])',
-            'textarea', '[contenteditable="true"]', '[contenteditable=""]',
-            '[contenteditable="plaintext-only"]', '[role="textbox"]',
-        ].join(',');
+        _setDotShape(bar) {
+            if (this.dotIsBar === bar) return;
+            this.dotIsBar = bar;
+            const d = this.dotEl;
+            if (!d) return;
+            d.style.width = (bar ? CFG.TEXT_BAR_W : CFG.DOT_SIZE) + 'px';
+            d.style.height = (bar ? CFG.TEXT_BAR_H : CFG.DOT_SIZE) + 'px';
+            d.style.borderRadius = bar ? '2px' : '50%';
+        }
 
-        let mx = innerWidth / 2, my = innerHeight / 2;
-        let rx = mx, ry = my;
-        let rw = CFG.RING_SIZE, rh = CFG.RING_SIZE, rr = CFG.RING_SIZE / 2;
-        let lastW = -1, lastH = -1, lastR = -1;
-        let tw, th, tr;
-        let sX = 0, sY = 0;
-        let dotS = 1, ringS = 1, dotV = 0, ringV = 0;
-        let pressed = false;
-        let hoverEl = null, hoverRad = 0;
-        let focusEl = null, focusRad = 0;
-        let textEl = null, dotIsBar = false, ringDim = false;
-        let lastInput = 0, lastT = 0, rafId = 0;
-        let shown = false, inside = true;
-
-        const dotCache = { x: NaN, y: NaN, s: NaN };
-        const ringCache = { x: NaN, y: NaN, s: NaN };
-
-        // 使用 AbortController 统一管理事件生命周期，SPA 重建时一键解绑
-        const ac = new AbortController();
-        const sig = ac.signal;
-
-        function parseBorderRadius(el) {
-            const br = getComputedStyle(el).borderRadius || '0px';
-            const rect = el.getBoundingClientRect();
-            const parts = br.split(/\s+/);
-            let max = 0;
-            for (const p of parts) {
-                const v = parseFloat(p);
-                if (!isFinite(v)) continue;
-                if (p.endsWith('%')) {
-                    max = Math.max(max, v / 100 * Math.min(rect.width, rect.height));
-                } else {
-                    max = Math.max(max, v);
-                }
+        _setRingAlpha(dim) {
+            if (this.ringDim === dim) return;
+            this.ringDim = dim;
+            if (this.ringEl) {
+                this.ringEl.style.setProperty('--ccA', dim ? CFG.TEXT_RING_ALPHA : CFG.RING_ALPHA);
             }
-            return max;
         }
 
-        function measure(el) {
-            const r = el.getBoundingClientRect();
-            if (r.width === 0 && r.height === 0) return null;
-            if (r.width > CFG.MAX_FIT_SIZE || r.height > CFG.MAX_FIT_SIZE) return null;
-            return parseBorderRadius(el);
+        _bindEvents(sig) {
+            document.addEventListener('visibilitychange', () => {
+                if (!document.hidden && this.rafId) this.lastT = performance.now();
+            }, { signal: sig });
+
+            addEventListener('pointermove', (e) => {
+                if (e.pointerType === 'touch') return;
+                this.mx = e.clientX;
+                this.my = e.clientY;
+                if (this.focusEl) { this.focusEl = null; this.focusRad = 0; }
+                this.wake();
+            }, { passive: true, signal: sig });
+
+            addEventListener('pointerdown', (e) => {
+                if (e.pointerType === 'touch') return;
+                this.pressed = true;
+                this.wake();
+            }, { signal: sig });
+
+            addEventListener('pointerup', () => { this.pressed = false; this.wake(); }, { signal: sig });
+            addEventListener('pointercancel', () => { this.pressed = false; this.wake(); }, { signal: sig });
+
+            addEventListener('wheel', (e) => {
+                if (!CFG.SCROLL_ENABLED) return;
+                if (this.hoverEl || this.focusEl || this.textEl) return;
+                let dx = e.deltaX, dy = e.deltaY;
+                if (e.deltaMode === 1) { dx *= 16; dy *= 16; }
+                else if (e.deltaMode === 2) { dx *= 120; dy *= 120; }
+                this.sX = clamp(this.sX - clamp(dx, -80, 80), -CFG.SCROLL_MAX, CFG.SCROLL_MAX);
+                this.sY = clamp(this.sY - clamp(dy, -80, 80), -CFG.SCROLL_MAX, CFG.SCROLL_MAX);
+                this.wake();
+            }, { passive: true, signal: sig });
+
+            document.addEventListener('mouseover', (e) => this._onMouseOver(e), { signal: sig });
+
+            document.addEventListener('focusin', (e) => this._onFocusIn(e), { signal: sig });
+
+            document.addEventListener('focusout', (e) => {
+                if (this.focusEl === e.target) { this.focusEl = null; this.wake(); }
+            }, { signal: sig });
+
+            const docEl = document.documentElement;
+            docEl.addEventListener('mouseenter', () => { this.inside = true; this.wake(); }, { signal: sig });
+            docEl.addEventListener('mouseleave', () => { this.inside = false; this.hide(); }, { signal: sig });
+            addEventListener('blur', () => this.hide(), { signal: sig });
+            addEventListener('focus', () => { if (this.inside) this.wake(); }, { signal: sig });
         }
 
-        function show() {
-            if (shown) return;
-            shown = true;
-            dot.classList.add('cc-live');
-            ring.classList.add('cc-live');
-        }
-        function hide() {
-            if (!shown) return;
-            shown = false;
-            dot.classList.remove('cc-live');
-            ring.classList.remove('cc-live');
-        }
-        function wake() {
-            lastInput = performance.now();
-            show();
-            if (!rafId) { lastT = lastInput; rafId = requestAnimationFrame(tick); }
-        }
-
-        // 所有事件绑定均通过 signal，generation 变更时自动清理
-        document.addEventListener('visibilitychange', () => {
-            if (!document.hidden && rafId) lastT = performance.now();
-        }, { signal: sig });
-
-        addEventListener('pointermove', (e) => {
-            if (e.pointerType === 'touch') return;
-            mx = e.clientX; my = e.clientY;
-            if (focusEl) { focusEl = null; focusRad = 0; }
-            wake();
-        }, { passive: true, signal: sig });
-
-        addEventListener('pointerdown', (e) => { if (e.pointerType === 'touch') return; pressed = true; wake(); }, { signal: sig });
-        addEventListener('pointerup', () => { pressed = false; wake(); }, { signal: sig });
-        addEventListener('pointercancel', () => { pressed = false; wake(); }, { signal: sig });
-
-        addEventListener('wheel', (e) => {
-            if (!CFG.SCROLL_ENABLED) return;
-            if (hoverEl || focusEl || textEl) return;
-            let dx = e.deltaX, dy = e.deltaY;
-            if (e.deltaMode === 1) { dx *= 16; dy *= 16; }
-            else if (e.deltaMode === 2) { dx *= 120; dy *= 120; }
-            sX = clamp(sX - clamp(dx, -80, 80), -CFG.SCROLL_MAX, CFG.SCROLL_MAX);
-            sY = clamp(sY - clamp(dy, -80, 80), -CFG.SCROLL_MAX, CFG.SCROLL_MAX);
-            wake();
-        }, { passive: true, signal: sig });
-
-        document.addEventListener('mouseover', (e) => {
+        _onMouseOver(e) {
             const tgt = e.target;
             if (!tgt || tgt.nodeType !== 1) return;
 
             const txt = tgt.closest(SEL_TEXT) || null;
-            if (txt !== textEl) {
-                textEl = txt;
-                setDotShape(!!txt);
-                setRingAlpha(!!txt);
+            if (txt !== this.textEl) {
+                this.textEl = txt;
+                this._setDotShape(!!txt);
+                this._setRingAlpha(!!txt);
             }
 
-            if (hoverEl && !hoverEl.isConnected) {
-                hoverEl = null;
-                hoverRad = 0;
+            if (this.hoverEl && !this.hoverEl.isConnected) {
+                this.hoverEl = null;
+                this.hoverRad = 0;
             }
 
             const inter = tgt.closest(SEL_INTERACTIVE);
-            if (inter !== hoverEl) {
+            if (inter !== this.hoverEl) {
                 let next = null, rad = 0;
                 if (inter && !inter.matches(SEL_TEXT)) {
                     const m = measure(inter);
                     if (m !== null) { next = inter; rad = m; }
                 }
-                hoverEl = next;
-                hoverRad = rad;
+                this.hoverEl = next;
+                this.hoverRad = rad;
             }
-        }, { signal: sig });
+        }
 
-        document.addEventListener('focusin', (e) => {
+        _onFocusIn(e) {
             const tgt = e.target;
-            if (!tgt || tgt.nodeType !== 1 || tgt.matches(SEL_TEXT) || !tgt.matches(SEL_INTERACTIVE)) return;
+            if (!tgt || tgt.nodeType !== 1) return;
+            if (tgt.matches(SEL_TEXT) || !tgt.matches(SEL_INTERACTIVE)) return;
             const m = measure(tgt);
-            if (m !== null) { focusEl = tgt; focusRad = m; wake(); }
-        }, { signal: sig });
-
-        document.addEventListener('focusout', (e) => {
-            if (focusEl === e.target) { focusEl = null; wake(); }
-        }, { signal: sig });
-
-        const docEl = document.documentElement;
-        docEl.addEventListener('mouseenter', () => { inside = true; wake(); }, { signal: sig });
-        docEl.addEventListener('mouseleave', () => { inside = false; hide(); }, { signal: sig });
-        addEventListener('blur', hide, { signal: sig });
-        addEventListener('focus', () => { if (inside) wake(); }, { signal: sig });
-
-        function setDotShape(bar) {
-            if (dotIsBar === bar) return;
-            dotIsBar = bar;
-            dot.style.width = (bar ? CFG.TEXT_BAR_W : CFG.DOT_SIZE) + 'px';
-            dot.style.height = (bar ? CFG.TEXT_BAR_H : CFG.DOT_SIZE) + 'px';
-            dot.style.borderRadius = bar ? '2px' : '50%';
-        }
-        function setRingAlpha(dim) {
-            if (ringDim === dim) return;
-            ringDim = dim;
-            ring.style.setProperty('--ccA', dim ? CFG.TEXT_RING_ALPHA : CFG.RING_ALPHA);
-        }
-
-        function setT(el, x, y, s, cache) {
-            const qx = Math.round(x * 100) / 100;
-            const qy = Math.round(y * 100) / 100;
-            const qs = Math.round(s * 1000) / 1000;
-            if (cache.x === qx && cache.y === qy && cache.s === qs) return;
-            cache.x = qx; cache.y = qy; cache.s = qs;
-            el.style.transform = 'translate3d(' + qx + 'px,' + qy + 'px,0) translate(-50%,-50%) scale(' + qs + ')';
-        }
-
-        setT(dot, mx, my, 1, dotCache);
-        setT(ring, rx, ry, 1, ringCache);
-
-        api = {
-            refresh() {
-                const oldDotTrans = dot.style.transition;
-                const oldRingTrans = ring.style.transition;
-                dot.style.transition = 'none';
-                ring.style.transition = 'none';
-
-                const b = dotIsBar; dotIsBar = !b; setDotShape(b);
-                const d = ringDim; ringDim = !d; setRingAlpha(d);
-                lastW = lastH = lastR = -1;
-                dotCache.x = dotCache.y = dotCache.s = NaN;
-                ringCache.x = ringCache.y = ringCache.s = NaN;
-
-                requestAnimationFrame(() => {
-                    dot.style.transition = oldDotTrans || '';
-                    ring.style.transition = oldRingTrans || '';
-                });
-                wake();
+            if (m !== null) {
+                this.focusEl = tgt;
+                this.focusRad = m;
+                this.wake();
             }
-        };
+        }
 
-        // ---------- Web API ----------
-        function handleWebRequest(e) {
-            const { action, requestId, payload } = e.detail || {};
-            if (!action) return;
-            let result;
-            try {
-                switch (action) {
-                    case 'ping':
-                        result = { status: 'alive', version: WEB_API_VERSION }; break;
-                    case 'getStatus':
-                        result = {
-                            visible: shown, pressed,
-                            hoverEl: !!hoverEl, focusEl: !!focusEl,
-                            textMode: dotIsBar, ringDim,
-                            scrollOffset: { x: sX, y: sY },
-                            dotScale: dotS, ringScale: ringS
-                        }; break;
-                    case 'getSettings': {
-                        const settings = {};
-                        for (const f of FIELDS) settings[f.key] = CFG[f.key];
-                        result = { settings }; break;
-                    }
-                    case 'setSetting': {
-                        const { key, value } = payload || {};
-                        if (key && key in FMAP) {
-                            const f = FMAP[key];
-                            if (f.type === 'bool') {
-                                if (typeof value !== 'boolean') {
-                                    result = { success: false, error: 'Expected boolean' };
-                                    break;
-                                }
-                                overrides[key] = value;
-                            } else if (typeof value === 'number' && isFinite(value)) {
-                                const clamped = clamp(value, f.min, f.max);
-                                overrides[key] = clamped;
-                            } else {
-                                result = { success: false, error: 'Invalid value type' };
-                                break;
-                            }
+        _installApi(sig) {
+            window.addEventListener('CURSORFX_REQUEST', (e) => {
+                const { action, requestId, payload } = e.detail || {};
+                if (!action) return;
+                let result;
+                try { result = this._handleApiAction(action, payload); }
+                catch (err) { result = { error: err.message }; }
 
-                            commit();
-                            store.write('overrides', overrides);
-                            result = { success: true, key, value: overrides[key] };
-                        } else {
-                            result = { success: false, error: 'Invalid key' };
-                        }
-                        break;
-                    }
-                    case 'resetSettings':
-                        for (const k in overrides) delete overrides[k];
-                        store.erase('overrides');
-                        commit();
-                        result = { success: true }; break;
-                    case 'toggleVisible':
-                        if (shown) hide(); else wake();
-                        result = { visible: shown }; break;
-                    case 'getVersion':
-                        result = { version: WEB_API_VERSION, scriptVersion: SCRIPT_VERSION }; break;
-                    default:
-                        result = { error: 'Unknown action: ' + action };
+                if (requestId) {
+                    window.dispatchEvent(new CustomEvent('CURSORFX_RESPONSE', {
+                        detail: { requestId, result }
+                    }));
                 }
-            } catch (err) { result = { error: err.message }; }
-            if (requestId) {
-                window.dispatchEvent(new CustomEvent('CURSORFX_RESPONSE', {
-                    detail: { requestId, result }
+            }, { signal: sig });
+
+            // 异步广播 ready，避免和脚本主逻辑抢同一个 tick
+            setTimeout(() => {
+                if (!this.active) return;
+                window.dispatchEvent(new CustomEvent('CURSORFX_READY', {
+                    detail: { version: WEB_API_VERSION, scriptVersion: SCRIPT_VERSION }
                 }));
+            }, 0);
+        }
+
+        _handleApiAction(action, payload) {
+            switch (action) {
+                case 'ping':
+                    return { status: 'alive', version: WEB_API_VERSION };
+                case 'getStatus':
+                    return {
+                        visible: this.shown,
+                        pressed: this.pressed,
+                        hoverEl: !!this.hoverEl,
+                        focusEl: !!this.focusEl,
+                        textMode: this.dotIsBar,
+                        ringDim: this.ringDim,
+                        scrollOffset: { x: this.sX, y: this.sY },
+                        dotScale: this.dotS,
+                        ringScale: this.ringS,
+                    };
+                case 'getSettings': {
+                    const settings = {};
+                    for (const f of FIELDS) settings[f.key] = CFG[f.key];
+                    return { settings };
+                }
+                case 'setSetting': {
+                    const { key, value } = payload || {};
+                    if (!key || !(key in FMAP)) return { success: false, error: 'Invalid key' };
+                    const f = FMAP[key];
+                    if (f.type === 'bool') {
+                        if (typeof value !== 'boolean') return { success: false, error: 'Expected boolean' };
+                        overrides[key] = value;
+                    } else {
+                        if (typeof value !== 'number' || !isFinite(value)) return { success: false, error: 'Invalid value type' };
+                        overrides[key] = clamp(value, f.min, f.max);
+                    }
+                    commit();
+                    store.write('overrides', overrides);
+                    return { success: true, key, value: overrides[key] };
+                }
+                case 'resetSettings':
+                    for (const k in overrides) delete overrides[k];
+                    store.erase('overrides');
+                    commit();
+                    return { success: true };
+                case 'toggleVisible':
+                    if (this.shown) this.hide(); else this.wake();
+                    return { visible: this.shown };
+                case 'getVersion':
+                    return { version: WEB_API_VERSION, scriptVersion: SCRIPT_VERSION };
+                default:
+                    return { error: 'Unknown action: ' + action };
             }
         }
-        window.addEventListener('CURSORFX_REQUEST', handleWebRequest, { signal: sig });
-        setTimeout(() => {
-            if (gen !== runGeneration) return; // 防止过期的 ready 事件
-            window.dispatchEvent(new CustomEvent('CURSORFX_READY', {
-                detail: { version: WEB_API_VERSION, scriptVersion: SCRIPT_VERSION }
-            }));
-        }, 0);
 
-        // ---------- 动画循环 ----------
-        function tick(t) {
-            // 【关键】generation 不匹配说明已被新 spawn 取代，静默退出
-            if (gen !== runGeneration) return;
+        _tick(t) {
+            if (!this.active) return;
+            this.rafId = 0;
 
-            rafId = 0;
-            const dt = clamp((t - lastT) / 1000, 0, 0.05) || 0.016;
-            lastT = t;
+            const dt = clamp((t - this.lastT) / 1000, 0, 0.05) || 0.016;
+            this.lastT = t;
 
-            let el = hoverEl || focusEl;
-            const elRad = hoverEl ? hoverRad : focusRad;
+            let el = this.hoverEl || this.focusEl;
+            const elRad = this.hoverEl ? this.hoverRad : this.focusRad;
             if (el && !el.isConnected) {
-                if (hoverEl === el) hoverEl = null;
-                if (focusEl === el) focusEl = null;
+                if (this.hoverEl === el) this.hoverEl = null;
+                if (this.focusEl === el) this.focusEl = null;
                 el = null;
             }
 
-            if (sX !== 0 || sY !== 0) {
+            // 滚动拖尾衰减
+            if (this.sX !== 0 || this.sY !== 0) {
                 const d = Math.exp(-CFG.SCROLL_DECAY * dt);
-                sX *= d; sY *= d;
-                if (Math.abs(sX) < 0.05) sX = 0;
-                if (Math.abs(sY) < 0.05) sY = 0;
+                this.sX *= d; this.sY *= d;
+                if (Math.abs(this.sX) < 0.05) this.sX = 0;
+                if (Math.abs(this.sY) < 0.05) this.sY = 0;
             }
 
-            let tx = mx + sX, ty = my + sY, speed = CFG.FOLLOW_SPEED;
-            tw = textEl ? CFG.TEXT_RING_SIZE : CFG.RING_SIZE;
-            th = tw; tr = tw / 2;
+            let tx = this.mx + this.sX, ty = this.my + this.sY;
+            let speed = CFG.FOLLOW_SPEED;
+
+            const baseSize = this.textEl ? CFG.TEXT_RING_SIZE : CFG.RING_SIZE;
+            let tw = baseSize, th = baseSize, tr = baseSize / 2;
 
             if (el) {
                 const r = el.getBoundingClientRect();
                 if ((r.width === 0 && r.height === 0) || r.width > CFG.MAX_FIT_SIZE || r.height > CFG.MAX_FIT_SIZE) {
-                    if (hoverEl === el) { hoverEl = null; hoverRad = 0; }
-                    if (focusEl === el) { focusEl = null; focusRad = 0; }
+                    if (this.hoverEl === el) { this.hoverEl = null; this.hoverRad = 0; }
+                    if (this.focusEl === el) { this.focusEl = null; this.focusRad = 0; }
                 } else {
                     tx = r.left + r.width / 2;
                     ty = r.top + r.height / 2;
@@ -662,76 +646,116 @@
                 }
             }
 
+            const pressedTarget = this.pressed ? CFG.CLICK_SCALE : 1;
+
             if (CFG.ENABLE_RING) {
                 const k = 1 - Math.exp(-speed * dt);
-                rx += (tx - rx) * k; ry += (ty - ry) * k;
-                if (Math.abs(tx - rx) < 0.05) rx = tx;
-                if (Math.abs(ty - ry) < 0.05) ry = ty;
+                this.rx += (tx - this.rx) * k;
+                this.ry += (ty - this.ry) * k;
+                if (Math.abs(tx - this.rx) < 0.05) this.rx = tx;
+                if (Math.abs(ty - this.ry) < 0.05) this.ry = ty;
 
                 const ks = 1 - Math.exp(-CFG.SHAPE_SPEED * dt);
-                rw += (tw - rw) * ks; rh += (th - rh) * ks; rr += (tr - rr) * ks;
-                if (Math.abs(tw - rw) < 0.1) rw = tw;
-                if (Math.abs(th - rh) < 0.1) rh = th;
-                if (Math.abs(tr - rr) < 0.1) rr = tr;
+                this.rw += (tw - this.rw) * ks;
+                this.rh += (th - this.rh) * ks;
+                this.rr += (tr - this.rr) * ks;
+                if (Math.abs(tw - this.rw) < 0.1) this.rw = tw;
+                if (Math.abs(th - this.rh) < 0.1) this.rh = th;
+                if (Math.abs(tr - this.rr) < 0.1) this.rr = tr;
 
-                const sT = pressed ? CFG.CLICK_SCALE : 1;
-                ringV = (ringV + (sT - ringS) * CFG.SPRING_K * dt) * Math.exp(-CFG.SPRING_DAMP * dt);
-                ringS = Math.max(0.2, ringS + ringV * dt);
+                this.ringV = (this.ringV + (pressedTarget - this.ringS) * CFG.SPRING_K * dt) * Math.exp(-CFG.SPRING_DAMP * dt);
+                this.ringS = Math.max(0.2, this.ringS + this.ringV * dt);
 
-                setT(ring, rx, ry, ringS, ringCache);
+                const ring = this.ringEl;
+                writeTransform(ring, this.rx, this.ry, this.ringS, this.ringCache);
 
-                const qrw = Math.round(rw * 10) / 10;
-                const qrh = Math.round(rh * 10) / 10;
-                const qrr = Math.round(rr * 10) / 10;
-                if (qrw !== lastW) { ring.style.width = qrw + 'px'; lastW = qrw; }
-                if (qrh !== lastH) { ring.style.height = qrh + 'px'; lastH = qrh; }
-                if (qrr !== lastR) { ring.style.borderRadius = qrr + 'px'; lastR = qrr; }
+                const qrw = Math.round(this.rw * 10) / 10;
+                const qrh = Math.round(this.rh * 10) / 10;
+                const qrr = Math.round(this.rr * 10) / 10;
+                if (qrw !== this.lastW) { ring.style.width = qrw + 'px'; this.lastW = qrw; }
+                if (qrh !== this.lastH) { ring.style.height = qrh + 'px'; this.lastH = qrh; }
+                if (qrr !== this.lastR) { ring.style.borderRadius = qrr + 'px'; this.lastR = qrr; }
+
+                // 空闲判定使用 ring 的量化收敛值
+                this._ringSettled = (
+                    qrw === Math.round(tw * 10) / 10 &&
+                    qrh === Math.round(th * 10) / 10 &&
+                    qrr === Math.round(tr * 10) / 10 &&
+                    Math.abs(this.ringS - pressedTarget) < 0.002 &&
+                    Math.abs(this.ringV) < 0.01
+                );
+            } else {
+                this._ringSettled = true;
             }
 
             if (CFG.ENABLE_DOT) {
-                const sT = pressed ? CFG.CLICK_SCALE : 1;
-                dotV = (dotV + (sT - dotS) * CFG.SPRING_K * dt) * Math.exp(-CFG.SPRING_DAMP * dt);
-                dotS = Math.max(0.2, dotS + dotV * dt);
-                setT(dot, mx, my, dotS, dotCache);
+                this.dotV = (this.dotV + (pressedTarget - this.dotS) * CFG.SPRING_K * dt) * Math.exp(-CFG.SPRING_DAMP * dt);
+                this.dotS = Math.max(0.2, this.dotS + this.dotV * dt);
+                writeTransform(this.dotEl, this.mx, this.my, this.dotS, this.dotCache);
+
+                this._dotSettled =
+                    Math.abs(this.dotS - pressedTarget) < 0.002 &&
+                    Math.abs(this.dotV) < 0.01;
+            } else {
+                this._dotSettled = true;
             }
 
-            const ringSettled = !CFG.ENABLE_RING || (
-                Math.round(rw * 10) / 10 === Math.round(tw * 10) / 10 &&
-                Math.round(rh * 10) / 10 === Math.round(th * 10) / 10 &&
-                Math.round(rr * 10) / 10 === Math.round(tr * 10) / 10 &&
-                Math.abs(ringS - (pressed ? CFG.CLICK_SCALE : 1)) < 0.002 && Math.abs(ringV) < 0.01
-            );
+            const idle = this._ringSettled && this._dotSettled &&
+                !el && this.sX === 0 && this.sY === 0;
+            if (idle && t - this.lastInput > CFG.IDLE_PAUSE_MS) return;
 
-            const dotSettled = !CFG.ENABLE_DOT || (
-                Math.abs(dotS - (pressed ? CFG.CLICK_SCALE : 1)) < 0.002 && Math.abs(dotV) < 0.01
-            );
-
-            const settled =
-                ringSettled && dotSettled &&
-                !el && sX === 0 && sY === 0;
-
-            if (settled && t - lastInput > CFG.IDLE_PAUSE_MS) return;
-
-            rafId = requestAnimationFrame(tick);
+            this.rafId = requestAnimationFrame(this._tickBound);
         }
-
-        // 当 generation 被更新时（即 spawn 被重新调用），中止所有事件监听
-        // 这比手动 removeEventListener 更高效且不会遗漏
-        const origSpawn = spawn;
-        const checkGen = setInterval(() => {
-            if (gen !== runGeneration) {
-                ac.abort();
-                clearInterval(checkGen);
-                if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
-            }
-        }, 2000); // 低频检查，仅作为 AbortController 的补充安全网
     }
 
-    // 启动守护进程
+    // ---------- 设置存储（延迟定义，避免和 commit 互引） ----------
+    const store = {
+        write(k, v) { writeRaw(k, JSON.stringify(v)); },
+        erase(k) { eraseRaw(k); },
+    };
+
+    // ---------- 初始化 ----------
+    Object.assign(CFG, DEFAULTS, overrides);
+    if (RM_PATCH) Object.assign(CFG, RM_PATCH);
+
+    renderCSS();
+    (document.head || document.documentElement).appendChild(styleEl);
+
+    const cursor = new CursorController();
+
+    let commitQueued = false;
+    function commit() {
+        Object.assign(CFG, DEFAULTS, overrides);
+        if (RM_PATCH) Object.assign(CFG, RM_PATCH);
+        if (commitQueued) return;
+        commitQueued = true;
+        requestAnimationFrame(() => {
+            commitQueued = false;
+            renderCSS();
+            cursor.refresh();
+        });
+    }
+
+    function startGuardian() {
+        const observer = new MutationObserver(() => {
+            // 只在元素掉线时重建，O(1) 检查
+            if (!cursor.isMounted()) cursor.mount();
+        });
+
+        const boot = () => {
+            if (!cursor.isMounted()) cursor.mount();
+            observer.observe(document.documentElement, { childList: true, subtree: true });
+        };
+
+        if (document.documentElement) boot();
+        else document.addEventListener('DOMContentLoaded', boot, { once: true });
+    }
+
     startGuardian();
 
     // ==================== 设置面板 ====================
-    let panelHost = null, panelOpen = false;
+    let panelHost = null;
+    let panelOpen = false;
     let saveTimeoutId = 0;
 
     const decimals = f => String(f.step).includes('.') ? String(f.step).split('.')[1].length : 0;
@@ -762,22 +786,22 @@
 
             const v = curVal(f);
             const disabled = isFieldDisabled(f);
-            const disabledAttr = disabled ? ' disabled' : '';
-            const disabledStyle = disabled ? ' style="opacity:.4;pointer-events:none"' : '';
+            const disAttr = disabled ? ' disabled' : '';
+            const disStyle = disabled ? ' style="opacity:.4;pointer-events:none"' : '';
 
             if (f.type === 'bool') {
                 html +=
-                    '<label class="row toggle-row"' + disabledStyle + '>' +
+                    '<label class="row toggle-row"' + disStyle + '>' +
                     '<span class="lab">' + t('labels.' + f.label) + '</span>' +
-                    '<input type="checkbox" data-k="' + f.key + '"' + (v ? ' checked' : '') + disabledAttr + '>' +
+                    '<input type="checkbox" data-k="' + f.key + '"' + (v ? ' checked' : '') + disAttr + '>' +
                     '</label>';
             } else {
                 const p = ((v - f.min) / (f.max - f.min) * 100).toFixed(1);
                 html +=
-                    '<label class="row"' + disabledStyle + '>' +
+                    '<label class="row"' + disStyle + '>' +
                     '<span class="lab">' + t('labels.' + f.label) + '</span>' +
                     '<input type="range" data-k="' + f.key + '" min="' + f.min + '" max="' + f.max +
-                    '" step="' + f.step + '" value="' + v + '" style="--p:' + p + '%"' + disabledAttr + '>' +
+                    '" step="' + f.step + '" value="' + v + '" style="--p:' + p + '%"' + disAttr + '>' +
                     '<span class="val">' + fmt(v, f) + '</span>' +
                     '</label>';
             }
@@ -787,13 +811,11 @@
 
     function updatePanelDisabledState(sh) {
         for (const f of FIELDS) {
-            const inp = sh.querySelector(`input[data-k="${f.key}"]`);
+            const inp = sh.querySelector('input[data-k="' + f.key + '"]');
             if (!inp) continue;
-
             const disabled = isFieldDisabled(f);
-            const row = inp.closest('.row');
-
             inp.disabled = disabled;
+            const row = inp.closest('.row');
             if (row) {
                 row.style.opacity = disabled ? '.4' : '';
                 row.style.pointerEvents = disabled ? 'none' : '';
@@ -802,10 +824,7 @@
     }
 
     function buildPanel() {
-        if (panelHost) {
-            panelHost.remove();
-            panelHost = null;
-        }
+        if (panelHost) { panelHost.remove(); panelHost = null; }
 
         panelHost = document.createElement('div');
         const hs = panelHost.style;
@@ -945,11 +964,9 @@
             const f = FMAP[k];
 
             if (f.type === 'bool') {
-                const v = e.target.checked;
-                overrides[k] = v;
+                overrides[k] = e.target.checked;
                 commit();
                 updatePanelDisabledState(sh);
-                scheduleSave();
             } else {
                 const v = clamp(parseFloat(e.target.value), f.min, f.max);
                 overrides[k] = v;
@@ -957,8 +974,8 @@
                 e.target.style.setProperty('--p',
                     ((v - f.min) / (f.max - f.min) * 100).toFixed(1) + '%');
                 commit();
-                scheduleSave();
             }
+            scheduleSave();
         });
 
         langSelect.addEventListener('change', (e) => {
@@ -975,6 +992,7 @@
         sh.querySelector('.panel').addEventListener('click', (e) => {
             const b = e.target.closest('[data-act]');
             if (!b) return;
+
             if (b.dataset.act === 'close') {
                 closePanel();
             } else if (b.dataset.act === 'reset') {
